@@ -1,0 +1,26 @@
+# `local` profile — developer workstation and CI (S0-T5).
+#
+# Precedence layer 3 of 5, selected by `T_PLAT_PROFILE=local` (the default).
+# Overlays config/default.toml. NON-SECRET ONLY.
+#
+# Local-vs-prod split (behavioural, enforced by the loader — see config/README.md):
+#   * secret policy is PERMISSIVE — an unresolvable secret reference yields
+#     `None` instead of failing, so you can run without provisioning every
+#     credential;
+#   * `app.debug = true` is allowed here and rejected under `prod`.
+
+[app]
+log_level = "debug"
+debug = true
+
+[database]
+host = "127.0.0.1"
+
+[market_data]
+# Point at a local stub, never a live vendor endpoint.
+endpoint = "http://127.0.0.1:8080"
+timeout_ms = 10000
+
+[telemetry]
+enabled = false
+sample_rate = 1.0

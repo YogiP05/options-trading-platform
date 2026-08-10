@@ -1,0 +1,213 @@
+# SHARED CROSS-LANGUAGE PARITY FIXTURE — numeric bounds (S0-T5).
+#
+# This is test data, not configuration. Both config test suites load this file
+# and drive every case through the environment-override path against built-in
+# defaults only:
+#
+#   rust/crates/platform-config/tests/parity_bounds.rs
+#   py/tests/test_config_bounds_parity.py
+#
+# Each case must produce the SAME accept/reject outcome in Rust and Python. The
+# two implementations declare the same bounds (`MIN_*`/`MAX_*` constants in
+# `model.rs` and `model.py`); this fixture is what proves they still agree.
+# Adding a numeric field means adding its boundary cases here — one fixture,
+# both languages, so they cannot drift apart again.
+#
+# Case fields:
+#   name       — identifies the case in assertion failures
+#   var        — the T_PLAT__* environment override to apply
+#   value      — the raw string value, exactly as an operator would export it
+#   accept     — whether the config is expected to load
+#   expect_int / expect_float
+#              — for accepted cases, the value the typed field must hold
+#   why        — the bound being exercised
+#
+# Rejection may surface at a different stage in each language (an env-parse
+# error, a schema/type error, or a range error) — what must match is whether
+# the config loads at all.
+
+# --- database.port: u16, semantic range 1..=65535 ---------------------------
+
+[[case]]
+name = "port-zero-is-not-a-usable-port"
+var = "T_PLAT__DATABASE__PORT"
+value = "0"
+accept = false
+why = "representable in a u16 but below the semantic minimum"
+
+[[case]]
+name = "port-minimum"
+var = "T_PLAT__DATABASE__PORT"
+value = "1"
+accept = true
+expect_int = 1
+why = "lowest valid TCP port"
+
+[[case]]
+name = "port-typical"
+var = "T_PLAT__DATABASE__PORT"
+value = "5432"
+accept = true
+expect_int = 5432
+why = "ordinary value well inside the range"
+
+[[case]]
+name = "port-maximum"
+var = "T_PLAT__DATABASE__PORT"
+value = "65535"
+accept = true
+expect_int = 65535
+why = "highest TCP port, top of the u16 range"
+
+[[case]]
+name = "port-above-maximum"
+var = "T_PLAT__DATABASE__PORT"
+value = "65536"
+accept = false
+why = "one past the u16 ceiling"
+
+[[case]]
+name = "port-negative"
+var = "T_PLAT__DATABASE__PORT"
+value = "-1"
+accept = false
+why = "u16 is unsigned"
+
+[[case]]
+name = "port-absurdly-large"
+var = "T_PLAT__DATABASE__PORT"
+value = "99999999999999999999"
+accept = false
+why = "beyond TOML's signed 64-bit integer domain"
+
+# --- market_data.timeout_ms: u64, semantic range 1..=i64::MAX ---------------
+
+[[case]]
+name = "timeout-zero-is-not-a-timeout"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "0"
+accept = false
+why = "representable but below the semantic minimum"
+
+[[case]]
+name = "timeout-minimum"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "1"
+accept = true
+expect_int = 1
+why = "smallest positive timeout"
+
+[[case]]
+name = "timeout-maximum"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "9223372036854775807"
+accept = true
+expect_int = 9223372036854775807
+why = "i64::MAX — the largest integer TOML can express"
+
+[[case]]
+name = "timeout-above-maximum"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "9223372036854775808"
+accept = false
+why = "one past i64::MAX; unbounded Python ints would otherwise accept it"
+
+[[case]]
+name = "timeout-negative"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "-1"
+accept = false
+why = "u64 is unsigned"
+
+# --- market_data.max_retries: u32, semantic range 0..=4294967295 ------------
+
+[[case]]
+name = "retries-zero-is-valid"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "0"
+accept = true
+expect_int = 0
+why = "zero retries means try once, then give up"
+
+[[case]]
+name = "retries-maximum"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "4294967295"
+accept = true
+expect_int = 4294967295
+why = "top of the u32 range"
+
+[[case]]
+name = "retries-above-maximum"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "4294967296"
+accept = false
+why = "one past the u32 ceiling"
+
+[[case]]
+name = "retries-negative"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "-1"
+accept = false
+why = "u32 is unsigned"
+
+# --- telemetry.sample_rate: f64, semantic range 0.0..=1.0 -------------------
+
+[[case]]
+name = "sample-rate-minimum"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "0.0"
+accept = true
+expect_float = 0.0
+why = "sample nothing"
+
+[[case]]
+name = "sample-rate-maximum"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "1.0"
+accept = true
+expect_float = 1.0
+why = "sample everything"
+
+[[case]]
+name = "sample-rate-integer-literal"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "1"
+accept = true
+expect_float = 1.0
+why = "an integer-looking override still parses as the declared float"
+
+[[case]]
+name = "sample-rate-above-maximum"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "1.0000001"
+accept = false
+why = "just past the top of the ratio"
+
+[[case]]
+name = "sample-rate-negative"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "-0.1"
+accept = false
+why = "below the bottom of the ratio"
+
+[[case]]
+name = "sample-rate-nan"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "nan"
+accept = false
+why = "both languages parse this as a float, so both must reject it as non-finite"
+
+[[case]]
+name = "sample-rate-infinity"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "inf"
+accept = false
+why = "parses as a float in both languages; not finite"
+
+[[case]]
+name = "sample-rate-not-a-number-at-all"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "abc"
+accept = false
+why = "fails to parse as the declared float type"

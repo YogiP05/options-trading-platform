@@ -12,6 +12,9 @@ performance.
 - `crates/platform-core/` — placeholder foundation crate for S0-T1. Builds,
   tests, lints and benches so the workspace is provably wired up. **No domain
   logic yet** — that arrives in later stages.
+- `crates/platform-config/` — typed configuration loading and secret sourcing
+  (S0-T5). Reads `../config/`; see [`crates/platform-config/README.md`](./crates/platform-config/README.md)
+  and the shared schema in [`../config/README.md`](../config/README.md).
 
 New crates are added under `crates/<name>/` and are picked up automatically by
 the `crates/*` glob.

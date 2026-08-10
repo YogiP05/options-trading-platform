@@ -21,6 +21,7 @@ stack) and [`build-stage-plan.md`](./build-stage-plan.md) (Stage **S0**).
 │   ├── tests/               pytest smoke tests
 │   └── benches/             placeholder benchmark harness
 ├── proto/         Cross-language schemas & wire contracts. See proto/README.md
+├── config/        Typed config: schema, profiles, sample.  See config/README.md
 ├── docs/          Design docs, ADRs, runbooks.          See docs/README.md
 ├── infra/         Reproducible dev-env & deployment.    See infra/README.md
 ├── .devcontainer/ Pinned dev toolchain (Rust/uv/just).
@@ -63,3 +64,45 @@ just bench        # cargo bench (clean no-op)  +  python placeholder bench
 
 Housekeeping: `just fmt` (format in place), `just clean`. Individual sides are
 available too (`just build-rust`, `just test-py`, …); run `just --list`.
+
+## Configuration & secrets (S0-T5)
+
+Typed config with one schema and two implementations that must agree — Rust
+([`rust/crates/platform-config`](./rust/crates/platform-config)) and Python
+([`py/src/t_plat/config`](./py/src/t_plat/config)) — both reading the same TOML
+files in [`config/`](./config). Substrate only: connectivity, logging and
+telemetry, no trading settings.
+
+**Precedence — `env > file > defaults`** (lowest to highest, each deep-merging
+over the one below):
+
+1. Built-in defaults in code (`Config::default()` / `Config.defaults()`)
+2. `config/default.toml` — base values for every profile
+3. `config/<profile>.toml` — `local` or `prod`, selected by `T_PLAT_PROFILE`
+4. `$T_PLAT_CONFIG_FILE` — optional explicit file, must exist if set
+5. `T_PLAT__<SECTION>__<KEY>` — typed environment overrides, beat every file
+
+**Local vs prod** is behavioural, not just different values: `local` tolerates
+unresolved secrets and allows `app.debug`, while `prod` fails to boot on any
+missing credential and rejects `app.debug`.
+
+**The two implementations are held to the same numeric bounds.** Every numeric
+field has one canonical range enforced in both languages, and
+`config/testdata/numeric_bounds.toml` is a shared fixture whose boundary cases
+(min, max, max+1, negative, overflow) both test suites run — so Rust and Python
+can never disagree about which configs are valid.
+
+**No secret is committed.** Secret-typed fields hold a *reference* —
+`env:NAME`, `file:/path` (a Docker/K8s secret mount), or `none` — that the
+loader dereferences at load time. A literal in a config file is a hard load
+error, covered by tests in both languages.
+
+Get started:
+
+```bash
+cp .env.example .env                                  # git-ignored; fill in locally
+cp config/config.example.toml config/local.override.toml
+```
+
+Full schema, precedence table and the local-vs-prod contract:
+[`config/README.md`](./config/README.md).

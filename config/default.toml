@@ -1,0 +1,35 @@
+# Base configuration — applies to EVERY profile (S0-T5).
+#
+# Precedence layer 2 of 5. See config/README.md for the full chain and schema.
+#
+# NON-SECRET ONLY. No secret value is ever committed to this repo. Fields that
+# hold credentials carry a secret *reference* instead of a value:
+#
+#   "env:NAME"    read from environment variable NAME
+#   "file:/path"  read from a secret-store mount (Docker/K8s secret file)
+#   "none"        no secret configured (allowed under `local`, rejected under `prod`)
+#
+# A literal credential in any of these files is a hard load error.
+
+[app]
+name = "t-plat"
+log_level = "info"
+debug = false
+
+[database]
+host = "127.0.0.1"
+port = 5432
+name = "t_plat"
+user = "t_plat"
+password = "env:T_PLAT_DATABASE_PASSWORD"
+
+[market_data]
+endpoint = "http://127.0.0.1:8080"
+timeout_ms = 5000
+max_retries = 3
+api_key = "env:T_PLAT_MARKET_DATA_API_KEY"
+
+[telemetry]
+enabled = false
+otlp_endpoint = "http://127.0.0.1:4317"
+sample_rate = 1.0
