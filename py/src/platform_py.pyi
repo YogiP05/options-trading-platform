@@ -1,0 +1,3 @@
+"""Type declarations for the native ``platform_py`` extension."""
+
+def rust_banner() -> str: ...

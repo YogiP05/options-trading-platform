@@ -40,3 +40,7 @@ just bench   # placeholder timing script (clean run)
 ```
 
 Or directly: `cd py && uv sync && uv run pytest -q`.
+
+The standard `just test` target runs `maturin develop` before pytest. Maturin
+builds the `platform-py` PyO3 crate and installs its native extension into uv's
+managed environment, so bridge tests always exercise freshly compiled Rust.
