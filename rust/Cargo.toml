@@ -1,0 +1,23 @@
+# Cargo workspace for the options-trading-platform Rust core.
+#
+# S0-T1 scope: build substrate only. No pricing/greeks/surface/strategy crates
+# live here yet — those arrive in later stages (S2+). New crates are added as
+# members under `crates/`.
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.97"
+
+# Shared lint policy for every crate in the workspace. Kept strict from day one
+# so the substrate never accumulates warnings.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
