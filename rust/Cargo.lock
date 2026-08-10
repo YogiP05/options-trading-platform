@@ -3,5 +3,9 @@
 version = 4
 
 [[package]]
+name = "golden-test"
+version = "0.0.0"
+
+[[package]]
 name = "platform-core"
 version = "0.0.0"
