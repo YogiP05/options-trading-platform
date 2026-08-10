@@ -36,6 +36,14 @@ test-rust:
 test-py:
     cd {{py_dir}} && uv run --group dev pytest -q
 
+# Verify committed numerical fixtures without changing them.
+golden:
+    cd {{rust_dir}} && cargo test -p golden-test
+
+# Re-record numerical fixtures after reviewing an intentional output change.
+golden-update:
+    cd {{rust_dir}} && UPDATE_GOLDEN=1 cargo test -p golden-test
+
 # --- Lint -------------------------------------------------------------------
 
 # Lint + format-check both languages. Warnings fail the build.
