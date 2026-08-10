@@ -1,0 +1,110 @@
+# CI for the options-trading-platform monorepo (S0-T3).
+#
+# Design rule: CI does not re-implement any check. Every gate is an existing
+# `just` target from /justfile, so what runs here is byte-for-byte what runs on
+# a developer's machine. Adding a check means editing the justfile, not this
+# file — CI and local can never drift.
+#
+# Toolchain versions are pinned to the same values as .devcontainer/Dockerfile:
+#   Rust  -> read from /rust-toolchain.toml (1.97.1, with clippy + rustfmt)
+#   uv    -> 0.11.24
+#   just  -> 1.58.0
+#   Python-> read from py/.python-version (3.12) by uv itself
+#
+# Gate coverage (see docs/ci.md for the full mapping):
+#   just build -> cargo build --workspace          | uv sync && uv build
+#   just lint  -> cargo fmt --check, clippy -Dwarn | ruff check, ruff format
+#                                                  | --check, mypy (strict)
+#   just test  -> cargo test --workspace           | pytest
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: CI only needs to read the repo.
+permissions:
+  contents: read
+
+# A new push to a PR supersedes the in-flight run for that PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Single required check. Any failing gate fails this job, which blocks the PR
+  # once "CI / gates" is a required status check on `main`.
+  gates:
+    name: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # rust-toolchain.toml is the single source of truth for the Rust version
+      # and for the clippy/rustfmt components — nothing is re-pinned here.
+      - name: Install pinned Rust toolchain (rust-toolchain.toml)
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+          cargo clippy --version
+          cargo fmt --version
+
+      # setup-uv publishes no floating major tag, so this is the exact release.
+      - name: Install pinned uv (0.11.24)
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.24"
+          enable-cache: true
+          cache-dependency-glob: py/uv.lock
+          # Cache the CPython that uv provisions from py/.python-version.
+          cache-python: true
+
+      - name: Install pinned just (1.58.0)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just@1.58.0
+
+      # Caches the registry, git deps and rust/target keyed on Cargo.lock.
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Show resolved toolchain versions
+        run: |
+          uv python install
+          echo "PYO3_PYTHON=$(uv python find)" >> "$GITHUB_ENV"
+          just --version
+          uv --version
+          rustup show active-toolchain
+
+      # --- Gates ---------------------------------------------------------
+      # `if: ${{ !cancelled() }}` lets every gate run even after an earlier one
+      # fails, so one CI run reports every problem instead of only the first.
+      # A failed step still fails the job, so the PR is still blocked.
+
+      - name: "Gate: build (cargo build --workspace + uv sync/build)"
+        run: just build
+
+      - name: "Gate: lint, format-check, typecheck (rustfmt, clippy, ruff, mypy)"
+        if: ${{ !cancelled() }}
+        run: just lint
+
+      # `just test` is the aggregate test target. The golden-test harness from
+      # S0-T4 is wired into that same target, so it becomes a blocking CI gate
+      # automatically when S0-T4 merges — no change needed here.
+      - name: "Gate: unit tests (cargo test --workspace + pytest)"
+        if: ${{ !cancelled() }}
+        run: just test
