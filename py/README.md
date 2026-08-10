@@ -39,7 +39,14 @@ just lint    # ruff check + ruff format --check + mypy
 just bench   # placeholder timing script (clean run)
 ```
 
-Or directly: `cd py && uv sync && uv run pytest -q`.
+Or directly, build the native extension before pytest:
+
+```bash
+cd py
+uv sync
+uv run --group dev maturin develop --manifest-path ../rust/crates/platform-py/Cargo.toml
+uv run --group dev pytest -q
+```
 
 The standard `just test` target runs `maturin develop` before pytest. Maturin
 builds the `platform-py` PyO3 crate and installs its native extension into uv's

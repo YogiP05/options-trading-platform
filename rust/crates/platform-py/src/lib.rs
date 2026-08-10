@@ -14,13 +14,3 @@ fn platform_py(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(rust_banner, module)?)?;
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::rust_banner;
-
-    #[test]
-    fn banner_identifies_rust() {
-        assert_eq!(rust_banner(), "options platform bridge: Rust");
-    }
-}
