@@ -18,6 +18,9 @@
 #   "none"        no secret configured
 #
 # Anything else — a literal value written into the file — is a load error.
+#
+# Numeric ranges below are enforced identically by the Rust and Python
+# loaders; see the bounds table in config/README.md.
 
 # Application-level settings.
 [app]
@@ -32,7 +35,7 @@ debug = true
 [database]
 # Hostname or IP. (string)
 host = "127.0.0.1"
-# TCP port, 1..=65535. (integer)
+# TCP port. (integer, 1..=65535)
 port = 5432
 # Database name. (string)
 name = "t_plat"
@@ -45,9 +48,9 @@ password = "env:T_PLAT_DATABASE_PASSWORD"
 [market_data]
 # Base URL of the market-data service. (string)
 endpoint = "http://127.0.0.1:8080"
-# Per-request timeout in milliseconds, > 0. (integer)
+# Per-request timeout in milliseconds. (integer, 1..=9223372036854775807)
 timeout_ms = 7500
-# Retry attempts after the first failure. (integer)
+# Retry attempts after the first failure. (integer, 0..=4294967295)
 max_retries = 2
 # Secret reference — never a literal key. (secret ref)
 api_key = "env:T_PLAT_MARKET_DATA_API_KEY"
@@ -58,5 +61,5 @@ api_key = "env:T_PLAT_MARKET_DATA_API_KEY"
 enabled = false
 # OTLP gRPC collector endpoint. (string)
 otlp_endpoint = "http://127.0.0.1:4317"
-# Trace sampling ratio in 0.0..=1.0. (float)
+# Trace sampling ratio. (float, finite, 0.0..=1.0)
 sample_rate = 1.0

@@ -114,8 +114,28 @@ def test_example_config_covers_exactly_the_schema() -> None:
     )
 
 
+def _dotenv_assignment_keys(text: str) -> set[str]:
+    """The ``KEY`` of every ``KEY=value`` line in a dotenv-style file.
+
+    Blank lines, comments and any ``export `` prefix are ignored. Parsed rather
+    than substring-matched so a variable that survives only inside a comment
+    does not satisfy the drift check. Mirrors ``dotenv_assignment_keys`` in the
+    Rust test support module.
+    """
+    keys: set[str] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key = line.split("=", 1)[0].strip().removeprefix("export ").strip()
+        if key:
+            keys.add(key)
+    return keys
+
+
 def test_env_example_documents_every_referenced_secret_variable() -> None:
-    env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
+    assigned = _dotenv_assignment_keys(ENV_EXAMPLE.read_text(encoding="utf-8"))
+    assert assigned, ".env.example must contain real assignments, not only commentary"
 
     for profile in (Profile.LOCAL, Profile.PROD):
         loaded = load_config(
@@ -126,9 +146,10 @@ def test_env_example_documents_every_referenced_secret_variable() -> None:
         )
         for key, reference in loaded.config.secret_refs():
             if reference.kind.value == "env":
-                assert reference.target in env_example, (
-                    f".env.example must document `{reference.target}` "
-                    f"(referenced by `{key}` under `{profile}`)"
+                assert reference.target in assigned, (
+                    f".env.example must assign `{reference.target}` "
+                    f"(referenced by `{key}` under `{profile}`); "
+                    f"assignments found: {sorted(assigned)}"
                 )
 
 

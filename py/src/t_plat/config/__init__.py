@@ -27,11 +27,22 @@ value overrides use the ``T_PLAT__`` double-underscore prefix. A variable
 targeting an undeclared key, or an unknown key inside a file, is a load error
 rather than a silent no-op.
 
+One schema, two implementations
+-------------------------------
+
+``rust/crates/platform-config`` mirrors this package key for key. To keep the
+two from diverging, every numeric field's canonical range is declared here as
+``MIN_*``/``MAX_*`` constants and mirrored in ``model.rs``, and
+``config/testdata/numeric_bounds.toml`` is a shared fixture whose boundary
+cases both test suites run — asserting the same accept/reject outcome. Python
+integers are unbounded, so these ranges are checked explicitly where Rust gets
+them from ``u16``/``u32``/``u64``. See the bounds table in ``config/README.md``.
+
 Secrets are never in the repo
 -----------------------------
 
 Secret-typed fields parse only into a :class:`SecretRef` — ``env:NAME``,
-``file:/path``, or ``none``. A literal written into the file raises
+``file:/path`` (absolute), or ``none``. A literal written into the file raises
 :class:`SecretLiteralError`. The loader dereferences those pointers after
 merging, against a :class:`SecretSource` (the process environment and
 secret-store mounts in production; an injected :class:`MappingSecretSource` in
@@ -103,6 +114,15 @@ from t_plat.config.loader import (
 )
 from t_plat.config.merge import ENV_PATH_SEPARATOR, ENV_VALUE_PREFIX
 from t_plat.config.model import (
+    LOG_LEVELS,
+    MAX_DATABASE_PORT,
+    MAX_MARKET_DATA_MAX_RETRIES,
+    MAX_MARKET_DATA_TIMEOUT_MS,
+    MAX_TELEMETRY_SAMPLE_RATE,
+    MIN_DATABASE_PORT,
+    MIN_MARKET_DATA_MAX_RETRIES,
+    MIN_MARKET_DATA_TIMEOUT_MS,
+    MIN_TELEMETRY_SAMPLE_RATE,
     AppConfig,
     Config,
     DatabaseConfig,
@@ -130,6 +150,15 @@ __all__ = [
     "ENV_PATH_SEPARATOR",
     "ENV_PROFILE",
     "ENV_VALUE_PREFIX",
+    "LOG_LEVELS",
+    "MAX_DATABASE_PORT",
+    "MAX_MARKET_DATA_MAX_RETRIES",
+    "MAX_MARKET_DATA_TIMEOUT_MS",
+    "MAX_TELEMETRY_SAMPLE_RATE",
+    "MIN_DATABASE_PORT",
+    "MIN_MARKET_DATA_MAX_RETRIES",
+    "MIN_MARKET_DATA_TIMEOUT_MS",
+    "MIN_TELEMETRY_SAMPLE_RATE",
     "SECRET_REF_SYNTAX",
     "AppConfig",
     "Config",

@@ -20,10 +20,19 @@
 //! `T_PLAT__` double-underscore prefix. A variable targeting an undeclared key,
 //! or an unknown key inside a file, is a load error rather than a silent no-op.
 //!
+//! # One schema, two implementations
+//!
+//! `py/src/t_plat/config` mirrors this crate key for key. To keep the two from
+//! diverging, every numeric field's canonical range is declared here as
+//! `MIN_*`/`MAX_*` constants and mirrored in `model.py`, and
+//! `config/testdata/numeric_bounds.toml` is a shared fixture whose boundary
+//! cases both test suites run — asserting the same accept/reject outcome. See
+//! the bounds table in `config/README.md`.
+//!
 //! # Secrets are never in the repo
 //!
 //! Secret-typed fields deserialize only into a [`SecretRef`] — `env:NAME`,
-//! `file:/path`, or `none`. A literal written into the file fails to load.
+//! `file:/path` (absolute), or `none`. A literal written into the file fails to load.
 //! The loader dereferences those pointers after merging, against a
 //! [`SecretSource`] (the process environment and secret-store mounts in
 //! production; an injected [`MapSecretSource`] in tests). Values are wrapped in
@@ -81,7 +90,12 @@ pub use loader::{
     LayerSource, LoadedConfig, Loader, BASE_FILE_NAME, DEFAULT_CONFIG_DIR, ENV_CONFIG_DIR,
     ENV_CONFIG_FILE, ENV_PROFILE,
 };
-pub use model::{AppConfig, Config, DatabaseConfig, MarketDataConfig, Profile, TelemetryConfig};
+pub use model::{
+    AppConfig, Config, DatabaseConfig, MarketDataConfig, Profile, TelemetryConfig,
+    MAX_DATABASE_PORT, MAX_MARKET_DATA_MAX_RETRIES, MAX_MARKET_DATA_TIMEOUT_MS,
+    MAX_TELEMETRY_SAMPLE_RATE, MIN_DATABASE_PORT, MIN_MARKET_DATA_MAX_RETRIES,
+    MIN_MARKET_DATA_TIMEOUT_MS, MIN_TELEMETRY_SAMPLE_RATE,
+};
 pub use secret::{
     MapSecretSource, OsSecretSource, ResolvedSecrets, Secret, SecretPolicy, SecretRef,
     SecretSource, SECRET_REF_SYNTAX,

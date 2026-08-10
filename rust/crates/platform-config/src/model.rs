@@ -150,6 +150,47 @@ pub struct TelemetryConfig {
 /// Log levels the schema accepts, lowest to highest severity.
 const LOG_LEVELS: [&str; 5] = ["trace", "debug", "info", "warn", "error"];
 
+// --- Canonical numeric bounds -----------------------------------------------
+//
+// These are part of the shared cross-language schema: `py/src/t_plat/config/
+// model.py` declares the same constants and enforces the same ranges, and
+// `config/testdata/numeric_bounds.toml` drives boundary cases through both
+// implementations so they cannot drift apart. Changing a bound here means
+// changing it there.
+//
+// Each field has two ranges, mirrored exactly on the Python side:
+//
+// * *representable* — what the field's integer type can hold. Enforced here by
+//   the type itself during deserialization (`ConfigError::Schema`); Python has
+//   no fixed-width integers, so it checks this range explicitly.
+// * *semantic* — the subset that actually makes sense, enforced by
+//   [`Config::validate`] in both languages (`ConfigError::OutOfRange`).
+
+/// Lowest usable TCP port. `0` is representable in a `u16` but never valid.
+pub const MIN_DATABASE_PORT: u16 = 1;
+/// Highest TCP port, and the top of the `u16` representable range.
+pub const MAX_DATABASE_PORT: u16 = u16::MAX;
+
+/// A request timeout must be positive.
+pub const MIN_MARKET_DATA_TIMEOUT_MS: u64 = 1;
+/// Top of the timeout range.
+///
+/// The field is a `u64`, but TOML integers are signed 64-bit, so no config
+/// file or environment override can express a larger value in either language.
+/// Pinning the bound here makes that limit explicit and identical on both
+/// sides rather than an accident of the parsers.
+pub const MAX_MARKET_DATA_TIMEOUT_MS: u64 = i64::MAX as u64;
+
+/// Retrying zero times is valid: it means "try once, then give up".
+pub const MIN_MARKET_DATA_MAX_RETRIES: u32 = 0;
+/// Top of the `u32` representable range for retry counts.
+pub const MAX_MARKET_DATA_MAX_RETRIES: u32 = u32::MAX;
+
+/// Sample nothing.
+pub const MIN_TELEMETRY_SAMPLE_RATE: f64 = 0.0;
+/// Sample everything.
+pub const MAX_TELEMETRY_SAMPLE_RATE: f64 = 1.0;
+
 impl Default for Config {
     /// Precedence layer 1: the schema always loads, even with no files and no
     /// environment. Values mirror `config/default.toml`.
@@ -220,22 +261,42 @@ impl Config {
                 reason: "must not be empty".to_owned(),
             });
         }
-        if self.database.port == 0 {
+        // The `u16` type already caps the upper end; only the lower bound needs
+        // a runtime check. Python enforces both ends explicitly.
+        if self.database.port < MIN_DATABASE_PORT {
             return Err(ConfigError::OutOfRange {
                 key: "database.port",
-                reason: "must be in 1..=65535".to_owned(),
+                reason: format!("must be in {MIN_DATABASE_PORT}..={MAX_DATABASE_PORT}"),
             });
         }
-        if self.market_data.timeout_ms == 0 {
+        if !(MIN_MARKET_DATA_TIMEOUT_MS..=MAX_MARKET_DATA_TIMEOUT_MS)
+            .contains(&self.market_data.timeout_ms)
+        {
             return Err(ConfigError::OutOfRange {
                 key: "market_data.timeout_ms",
-                reason: "must be greater than 0".to_owned(),
+                reason: format!(
+                    "{} is outside {MIN_MARKET_DATA_TIMEOUT_MS}..={MAX_MARKET_DATA_TIMEOUT_MS}",
+                    self.market_data.timeout_ms
+                ),
             });
         }
-        if !(0.0..=1.0).contains(&self.telemetry.sample_rate) {
+        // `max_retries` is a `u32`, so both ends of the canonical range are
+        // already guaranteed by the type; Python checks them explicitly.
+        if !self.telemetry.sample_rate.is_finite() {
             return Err(ConfigError::OutOfRange {
                 key: "telemetry.sample_rate",
-                reason: format!("{} is outside 0.0..=1.0", self.telemetry.sample_rate),
+                reason: format!("{} is not a finite number", self.telemetry.sample_rate),
+            });
+        }
+        if !(MIN_TELEMETRY_SAMPLE_RATE..=MAX_TELEMETRY_SAMPLE_RATE)
+            .contains(&self.telemetry.sample_rate)
+        {
+            return Err(ConfigError::OutOfRange {
+                key: "telemetry.sample_rate",
+                reason: format!(
+                    "{} is outside {MIN_TELEMETRY_SAMPLE_RATE:.1}..={MAX_TELEMETRY_SAMPLE_RATE:.1}",
+                    self.telemetry.sample_rate
+                ),
             });
         }
         Ok(())

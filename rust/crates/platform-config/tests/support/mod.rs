@@ -7,6 +7,7 @@
 // all of it.
 #![allow(dead_code)]
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -29,6 +30,32 @@ pub fn repo_config_dir() -> PathBuf {
 /// The committed sample config that the tests load.
 pub fn example_config_path() -> PathBuf {
     repo_config_dir().join("config.example.toml")
+}
+
+/// The shared numeric-bounds fixture, also read by the Python suite.
+pub fn bounds_fixture_path() -> PathBuf {
+    repo_config_dir().join("testdata/numeric_bounds.toml")
+}
+
+/// The assignment keys in a dotenv-style file: the `KEY` of every `KEY=value`
+/// line, ignoring blanks, comments and any `export ` prefix.
+///
+/// Parsed rather than substring-matched so a variable that survives only
+/// inside a comment does not satisfy the drift check.
+pub fn dotenv_assignment_keys(text: &str) -> BTreeSet<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| line.split_once('='))
+        .map(|(key, _)| {
+            key.trim()
+                .strip_prefix("export ")
+                .unwrap_or(key.trim())
+                .trim()
+        })
+        .filter(|key| !key.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Counter making temp directory names unique within a test binary.

@@ -24,6 +24,13 @@ ENV_PATH_SEPARATOR = "__"
 _TRUTHY = frozenset({"true", "1", "yes", "on"})
 _FALSY = frozenset({"false", "0", "no", "off"})
 
+# TOML integers are signed 64-bit, and the Rust loader parses an integer
+# override with `str::parse::<i64>()`. Python integers are unbounded, so the
+# same domain is enforced here — otherwise an override too large for TOML would
+# be accepted in Python and rejected in Rust.
+_TOML_INT_MIN = -(2**63)
+_TOML_INT_MAX = 2**63 - 1
+
 
 def deep_merge(base: dict[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
     """Return ``base`` with ``overlay`` merged on top.
@@ -116,9 +123,12 @@ def _coerce_like(existing: object, raw: str, var: str, key: str) -> object:
         return raw
     if isinstance(existing, int):
         try:
-            return int(raw.strip())
+            parsed = int(raw.strip())
         except ValueError as exc:
             raise reject() from exc
+        if not _TOML_INT_MIN <= parsed <= _TOML_INT_MAX:
+            raise reject()
+        return parsed
     if isinstance(existing, float):
         try:
             return float(raw.strip())

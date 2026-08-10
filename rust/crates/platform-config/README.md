@@ -65,6 +65,10 @@ let loaded = Loader::from_env_map(BTreeMap::new())
 - **The profile is a behavioural switch.** It selects the `SecretPolicy` and the
   profile validation rules, so `prod` fails to boot on a missing credential and
   `local` does not.
+- **Numeric bounds are shared, not incidental.** The `MIN_*`/`MAX_*` constants in
+  `model.rs` are mirrored in `model.py`, and `config/testdata/numeric_bounds.toml`
+  drives the same boundary cases through both implementations. A bound that moves
+  on one side only fails the other side's suite.
 
 ## Tests
 
@@ -77,4 +81,6 @@ cd rust && cargo test -p platform-config
   sample documents exactly the schema's keys.
 - `tests/precedence.rs` — one test per layer of the precedence chain, plus the
   error paths (unknown keys, wrong types, literal secrets, missing prod secrets).
+- `tests/parity_bounds.rs` — the shared numeric-bounds fixture, asserting the
+  same accept/reject outcome Python asserts in `py/tests/test_config_bounds_parity.py`.
 - Unit tests live next to the code in `src/*.rs`.

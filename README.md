@@ -86,6 +86,12 @@ over the one below):
 unresolved secrets and allows `app.debug`, while `prod` fails to boot on any
 missing credential and rejects `app.debug`.
 
+**The two implementations are held to the same numeric bounds.** Every numeric
+field has one canonical range enforced in both languages, and
+`config/testdata/numeric_bounds.toml` is a shared fixture whose boundary cases
+(min, max, max+1, negative, overflow) both test suites run — so Rust and Python
+can never disagree about which configs are valid.
+
 **No secret is committed.** Secret-typed fields hold a *reference* —
 `env:NAME`, `file:/path` (a Docker/K8s secret mount), or `none` — that the
 loader dereferences at load time. A literal in a config file is a hard load

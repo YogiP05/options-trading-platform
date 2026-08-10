@@ -116,6 +116,16 @@ impl SecretRef {
             if path.is_empty() {
                 return Err("`file:` reference is missing a path".to_owned());
             }
+            // Checked as a literal leading `/` rather than `Path::is_absolute`
+            // so Rust and Python agree on every platform: a secret-store mount
+            // is an absolute path, and a relative one would resolve against
+            // whatever directory the process happened to start in.
+            if !path.starts_with('/') {
+                return Err(format!(
+                    "`file:` reference `{path}` must be an absolute path \
+                     (a secret-store mount, e.g. `file:/run/secrets/name`)"
+                ));
+            }
             return Ok(Self::File(PathBuf::from(path)));
         }
         Err(format!(
@@ -388,6 +398,13 @@ mod tests {
     fn empty_scheme_bodies_are_rejected() {
         assert!(SecretRef::parse("env:").is_err());
         assert!(SecretRef::parse("file:").is_err());
+    }
+
+    #[test]
+    fn relative_file_references_are_rejected() {
+        let err = SecretRef::parse("file:run/secrets/thing").expect_err("must be absolute");
+        assert!(err.contains("absolute"), "unexpected message: {err}");
+        assert!(SecretRef::parse("file:/run/secrets/thing").is_ok());
     }
 
     #[test]

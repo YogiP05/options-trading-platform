@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from math import isfinite
 from typing import Any
 
 from t_plat.config.errors import (
@@ -35,6 +36,51 @@ __all__ = [
 
 #: Log levels the schema accepts, lowest to highest severity.
 LOG_LEVELS = ("trace", "debug", "info", "warn", "error")
+
+# --- Canonical numeric bounds -------------------------------------------------
+#
+# These are part of the shared cross-language schema:
+# ``rust/crates/platform-config/src/model.rs`` declares the same constants and
+# enforces the same ranges, and ``config/testdata/numeric_bounds.toml`` drives
+# boundary cases through both implementations so they cannot drift apart.
+# Changing a bound here means changing it there.
+#
+# Each field has two ranges, mirrored exactly on the Rust side:
+#
+# * *representable* — what the Rust field's integer type can hold. Rust gets
+#   this for free from ``u16``/``u32``/``u64`` during deserialization; Python
+#   has no fixed-width integers, so :func:`_integer` checks it explicitly and
+#   raises :class:`SchemaError`, matching Rust's deserialization failure.
+# * *semantic* — the subset that actually makes sense, enforced by
+#   :meth:`Config.validate` in both languages via :class:`OutOfRangeError`.
+
+#: Top of the ``u16`` representable range for ``database.port``.
+REPRESENTABLE_MAX_DATABASE_PORT = 2**16 - 1
+#: Top of the ``u32`` representable range for ``market_data.max_retries``.
+REPRESENTABLE_MAX_MARKET_DATA_MAX_RETRIES = 2**32 - 1
+#: Largest integer TOML can express (signed 64-bit), which is the effective
+#: ceiling for the ``u64`` ``market_data.timeout_ms`` in both languages.
+REPRESENTABLE_MAX_MARKET_DATA_TIMEOUT_MS = 2**63 - 1
+
+#: Lowest usable TCP port. ``0`` is representable in a ``u16`` but never valid.
+MIN_DATABASE_PORT = 1
+#: Highest TCP port, and the top of the ``u16`` representable range.
+MAX_DATABASE_PORT = REPRESENTABLE_MAX_DATABASE_PORT
+
+#: A request timeout must be positive.
+MIN_MARKET_DATA_TIMEOUT_MS = 1
+#: Top of the timeout range — see the note on the representable ceiling above.
+MAX_MARKET_DATA_TIMEOUT_MS = REPRESENTABLE_MAX_MARKET_DATA_TIMEOUT_MS
+
+#: Retrying zero times is valid: it means "try once, then give up".
+MIN_MARKET_DATA_MAX_RETRIES = 0
+#: Top of the ``u32`` representable range for retry counts.
+MAX_MARKET_DATA_MAX_RETRIES = REPRESENTABLE_MAX_MARKET_DATA_MAX_RETRIES
+
+#: Sample nothing.
+MIN_TELEMETRY_SAMPLE_RATE = 0.0
+#: Sample everything.
+MAX_TELEMETRY_SAMPLE_RATE = 1.0
 
 
 class Profile(StrEnum):
@@ -97,11 +143,29 @@ def _string(table: dict[str, Any], key: str, path: str) -> str:
     return raw
 
 
-def _integer(table: dict[str, Any], key: str, path: str) -> int:
+def _integer(
+    table: dict[str, Any],
+    key: str,
+    path: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    """Parse an integer field and enforce its *representable* range.
+
+    Rust gets this range from the field's fixed-width integer type, so an
+    out-of-range value fails there during deserialization. Python integers are
+    unbounded, so the range is checked here to produce the same rejection —
+    without it the two implementations would disagree about which configs load.
+    """
     raw = _required(table, key, path)
     # bool is a subclass of int in Python; the schema means them separately.
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise SchemaError(f"config key `{path}.{key}` must be an integer, got {_kind(raw)}")
+    if not minimum <= raw <= maximum:
+        raise SchemaError(
+            f"config key `{path}.{key}` must be an integer in {minimum}..={maximum}, got {raw}"
+        )
     return raw
 
 
@@ -200,7 +264,9 @@ class DatabaseConfig:
         _reject_unknown(table, cls.KEYS, "database")
         return cls(
             host=_string(table, "host", "database"),
-            port=_integer(table, "port", "database"),
+            port=_integer(
+                table, "port", "database", minimum=0, maximum=REPRESENTABLE_MAX_DATABASE_PORT
+            ),
             name=_string(table, "name", "database"),
             user=_string(table, "user", "database"),
             password=_secret_ref(table, "password", "database"),
@@ -241,8 +307,20 @@ class MarketDataConfig:
         _reject_unknown(table, cls.KEYS, "market_data")
         return cls(
             endpoint=_string(table, "endpoint", "market_data"),
-            timeout_ms=_integer(table, "timeout_ms", "market_data"),
-            max_retries=_integer(table, "max_retries", "market_data"),
+            timeout_ms=_integer(
+                table,
+                "timeout_ms",
+                "market_data",
+                minimum=0,
+                maximum=REPRESENTABLE_MAX_MARKET_DATA_TIMEOUT_MS,
+            ),
+            max_retries=_integer(
+                table,
+                "max_retries",
+                "market_data",
+                minimum=0,
+                maximum=REPRESENTABLE_MAX_MARKET_DATA_MAX_RETRIES,
+            ),
             api_key=_secret_ref(table, "api_key", "market_data"),
         )
 
@@ -402,22 +480,39 @@ class Config:
             )
         if not self.app.name.strip():
             raise OutOfRangeError("config key `app.name` is out of range: must not be empty")
-        if not 1 <= self.database.port <= 65535:
+        if not MIN_DATABASE_PORT <= self.database.port <= MAX_DATABASE_PORT:
             raise OutOfRangeError(
-                "config key `database.port` is out of range: must be in 1..=65535"
+                f"config key `database.port` is out of range: must be in "
+                f"{MIN_DATABASE_PORT}..={MAX_DATABASE_PORT}"
             )
-        if self.market_data.timeout_ms <= 0:
+        if not (
+            MIN_MARKET_DATA_TIMEOUT_MS <= self.market_data.timeout_ms <= MAX_MARKET_DATA_TIMEOUT_MS
+        ):
             raise OutOfRangeError(
-                "config key `market_data.timeout_ms` is out of range: must be greater than 0"
+                f"config key `market_data.timeout_ms` is out of range: "
+                f"{self.market_data.timeout_ms} is outside "
+                f"{MIN_MARKET_DATA_TIMEOUT_MS}..={MAX_MARKET_DATA_TIMEOUT_MS}"
             )
-        if self.market_data.max_retries < 0:
+        if not (
+            MIN_MARKET_DATA_MAX_RETRIES
+            <= self.market_data.max_retries
+            <= MAX_MARKET_DATA_MAX_RETRIES
+        ):
             raise OutOfRangeError(
-                "config key `market_data.max_retries` is out of range: must not be negative"
+                f"config key `market_data.max_retries` is out of range: "
+                f"{self.market_data.max_retries} is outside "
+                f"{MIN_MARKET_DATA_MAX_RETRIES}..={MAX_MARKET_DATA_MAX_RETRIES}"
             )
-        if not 0.0 <= self.telemetry.sample_rate <= 1.0:
+        if not isfinite(self.telemetry.sample_rate):
             raise OutOfRangeError(
                 f"config key `telemetry.sample_rate` is out of range: "
-                f"{self.telemetry.sample_rate} is outside 0.0..=1.0"
+                f"{self.telemetry.sample_rate} is not a finite number"
+            )
+        if not MIN_TELEMETRY_SAMPLE_RATE <= self.telemetry.sample_rate <= MAX_TELEMETRY_SAMPLE_RATE:
+            raise OutOfRangeError(
+                f"config key `telemetry.sample_rate` is out of range: "
+                f"{self.telemetry.sample_rate} is outside "
+                f"{MIN_TELEMETRY_SAMPLE_RATE}..={MAX_TELEMETRY_SAMPLE_RATE}"
             )
 
     def validate_profile_rules(self) -> None:

@@ -6,7 +6,9 @@ mod support;
 use std::collections::BTreeMap;
 
 use platform_config::{Config, Loader, MapSecretSource, Profile, SecretRef};
-use support::{example_config_path, flatten_keys, repo_config_dir, repo_root};
+use support::{
+    dotenv_assignment_keys, example_config_path, flatten_keys, repo_config_dir, repo_root,
+};
 
 /// A secret source stocked with the credentials the committed configs
 /// reference. Values are obvious dummies — the point is that the *repo* holds
@@ -137,8 +139,15 @@ fn example_config_covers_exactly_the_schema() {
 
 #[test]
 fn env_example_documents_every_referenced_secret_variable() {
-    let env_example =
+    let text =
         std::fs::read_to_string(repo_root().join(".env.example")).expect(".env.example exists");
+    // Assignment keys only: a variable mentioned solely in a comment must not
+    // satisfy the drift check.
+    let assigned = dotenv_assignment_keys(&text);
+    assert!(
+        !assigned.is_empty(),
+        ".env.example must contain real assignments, not only commentary",
+    );
 
     for profile in [Profile::Local, Profile::Prod] {
         let loaded = hermetic()
@@ -150,8 +159,9 @@ fn env_example_documents_every_referenced_secret_variable() {
         for (key, reference) in loaded.config.secret_refs() {
             if let SecretRef::Env(name) = reference {
                 assert!(
-                    env_example.contains(name.as_str()),
-                    ".env.example must document `{name}` (referenced by `{key}` under `{profile}`)",
+                    assigned.contains(name.as_str()),
+                    ".env.example must assign `{name}` (referenced by `{key}` under `{profile}`); \
+                     assignments found: {assigned:?}",
                 );
             }
         }

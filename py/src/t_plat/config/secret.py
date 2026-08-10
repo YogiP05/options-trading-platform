@@ -206,6 +206,15 @@ class SecretRef:
             path = raw[len(FILE_PREFIX) :]
             if not path:
                 raise ValueError("`file:` reference is missing a path")
+            # Checked as a literal leading "/" rather than Path.is_absolute so
+            # Rust and Python agree on every platform: a secret-store mount is
+            # an absolute path, and a relative one would resolve against
+            # whatever directory the process happened to start in.
+            if not path.startswith("/"):
+                raise ValueError(
+                    f"`file:` reference `{path}` must be an absolute path "
+                    "(a secret-store mount, e.g. `file:/run/secrets/name`)"
+                )
             return cls.file(path)
         raise ValueError(
             f"expected a secret reference ({SECRET_REF_SYNTAX}), found a literal "

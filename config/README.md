@@ -19,6 +19,7 @@ structs. Substrate only — no trading, pricing or strategy settings live here.
 | `prod.toml`           | yes | `prod` profile overlay (deployed). Non-secret; secrets by reference only. |
 | `config.example.toml` | yes | **Sample config** — every key with its type. Loaded by the Rust and Python test suites so it cannot drift. |
 | `../.env.example`     | yes | **Sample environment** — control vars + the secret env var names. Dummy values only. |
+| `testdata/numeric_bounds.toml` | yes | **Shared test fixture** (not config) — boundary cases both language suites run to prove their numeric bounds agree. |
 | `*.override.toml`     | **no** (git-ignored) | Your personal overrides. `cp config.example.toml local.override.toml`. |
 | `../.env`             | **no** (git-ignored) | Your local secrets. `cp ../.env.example ../.env`. |
 
@@ -69,6 +70,36 @@ Overrides are **typed and checked**, not stringly-typed:
 
 Unknown keys inside the TOML files are rejected the same way.
 
+## Numeric bounds (identical in both languages)
+
+Every numeric field has a **canonical range that both implementations enforce**.
+Rust gets the outer range from the field's fixed-width integer type; Python has
+no fixed-width integers, so it checks the same range explicitly. Without that,
+a value above Rust's ceiling would load in Python and fail in Rust — one schema,
+two answers.
+
+| Key | Type | Representable | Valid | Rejected because |
+|-----|------|---------------|-------|------------------|
+| `database.port`            | `u16` | `0..=65535`               | `1..=65535`               | `0` is not a usable port |
+| `market_data.timeout_ms`   | `u64` | `0..=9223372036854775807` | `1..=9223372036854775807` | a timeout must be positive; the ceiling is TOML's signed 64-bit integer limit, so no file or override can express more in either language |
+| `market_data.max_retries`  | `u32` | `0..=4294967295`          | `0..=4294967295`          | `0` is valid — try once, then give up |
+| `telemetry.sample_rate`    | `f64` | any float                 | finite, `0.0..=1.0`       | it is a ratio; `nan` and `inf` parse as floats in both languages and are rejected as non-finite |
+
+Out-of-range values are rejected in both languages, though the *stage* can
+differ — an environment override that is not a valid 64-bit integer fails while
+parsing the override, a value past a field's type ceiling fails as a schema
+error, and a value inside the type but outside the valid range fails as a range
+error. What is guaranteed identical is **whether the config loads at all**.
+
+The bounds live as named constants in
+[`rust/.../model.rs`](../rust/crates/platform-config/src/model.rs) and
+[`py/.../model.py`](../py/src/t_plat/config/model.py), and
+[`config/testdata/numeric_bounds.toml`](./testdata/numeric_bounds.toml) is a
+**shared fixture** that both test suites load, driving each boundary case
+(min, max, max+1, negative, overflow) through both implementations and asserting
+the same accept/reject outcome. Moving a bound on one side only fails the other
+side's suite.
+
 ## Secrets — never committed, never literal
 
 No secret value exists anywhere in this repository, and the loader actively
@@ -77,7 +108,7 @@ enforces that. Secret-typed fields accept only a **reference**:
 | Reference | Resolved from |
 |-----------|---------------|
 | `"env:NAME"`   | environment variable `NAME` (the deployment platform's secret injection) |
-| `"file:/path"` | a secret-store mount — Docker/Compose secrets, Kubernetes secret volumes |
+| `"file:/path"` | a secret-store mount — Docker/Compose secrets, Kubernetes secret volumes. Must be **absolute**: a relative path would resolve against whatever directory the process started in. |
 | `"none"`       | no secret configured |
 
 Anything else — a literal value written into the file — fails to load with a
@@ -141,9 +172,13 @@ environment.
 1. Add it to the Rust struct in `rust/crates/platform-config/src/model.rs` and
    the Python dataclass in `py/src/t_plat/config/model.py` (same name, same type).
 2. Add it to `config/default.toml` **and** `config/config.example.toml`.
-3. If it is a secret, register it in `secret_refs()` (Rust) / `secret_refs()`
-   (Python) so the `prod` fail-fast check covers it, and add the env var name
-   to `.env.example`.
+3. If it is numeric, declare its bounds as `MIN_*`/`MAX_*` constants in
+   **both** `model.rs` and `model.py`, and add boundary cases (min, max,
+   max+1, negative) to `config/testdata/numeric_bounds.toml`.
+4. If it is a secret, register it in `secret_refs()` (Rust) / `secret_refs()`
+   (Python) so the `prod` fail-fast check covers it, and add an **assignment**
+   (not just a comment) for the env var name in `.env.example` — the drift
+   check parses `KEY=value` lines.
 
 The example-config tests in both languages load `config.example.toml` against
 the real schema, so a key added to one side and forgotten on the other fails
