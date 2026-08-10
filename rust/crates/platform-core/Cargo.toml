@@ -1,0 +1,14 @@
+# Placeholder foundation crate. Proves the workspace builds, tests, lints and
+# benches end to end. Substrate only — no domain logic (see S0-T1 anti-goals).
+[package]
+name = "platform-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Build-substrate placeholder crate for the options trading platform."
+
+[lints]
+workspace = true
+
+[dependencies]

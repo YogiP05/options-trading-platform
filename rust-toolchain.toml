@@ -1,0 +1,6 @@
+# Pinned Rust toolchain — single source of truth for every developer, the
+# devcontainer, and CI. Bump deliberately; keep in sync with .devcontainer.
+[toolchain]
+channel = "1.97.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
