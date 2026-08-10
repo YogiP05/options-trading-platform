@@ -1,0 +1,473 @@
+# SHARED CROSS-LANGUAGE PARITY FIXTURE — override string grammar (S0-T5).
+#
+# Companion to numeric_bounds.toml. That fixture pins the *value ranges*; this
+# one pins the *lexical grammar*: exactly which raw strings become a value at
+# all. Same case schema, same two test suites, same engine:
+#
+#   rust/crates/platform-config/tests/parity_bounds.rs
+#   py/tests/test_config_bounds_parity.py
+#
+# Why this file exists: environment overrides arrive as strings, so how a string
+# becomes a value is part of the shared schema. Delegating that to each
+# language's standard library silently split the two implementations — Python's
+# int()/float() accept `1_0`, Arabic-Indic and full-width digits, and Python's
+# str.strip and Rust's str::trim disagree about characters like U+001F. Both
+# loaders now implement one explicit ASCII grammar and neither trims:
+#
+#   integer  [+-]?[0-9]+
+#   float    [+-]?( inf | infinity | nan | ([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)? )
+#   boolean  exact ASCII-lowercased match of true/1/yes/on | false/0/no/off
+#   string   taken verbatim, never trimmed
+#
+# `accept` is the outcome of the whole load, so a case can be lexically valid
+# and still rejected on range (e.g. `1e3` for a 0.0..=1.0 ratio).
+
+# --- integer grammar, on database.port --------------------------------------
+
+[[case]]
+name = "lex-int-underscore-separator"
+var = "T_PLAT__DATABASE__PORT"
+value = "1_0"
+accept = false
+why = "Python's int() reads this as 10; Rust's parse rejects it. The original divergence."
+
+[[case]]
+name = "lex-int-leading-space"
+var = "T_PLAT__DATABASE__PORT"
+value = " 10"
+accept = false
+why = "neither language trims overrides"
+
+[[case]]
+name = "lex-int-trailing-space"
+var = "T_PLAT__DATABASE__PORT"
+value = "10 "
+accept = false
+why = "neither language trims overrides"
+
+[[case]]
+name = "lex-int-trailing-newline"
+var = "T_PLAT__DATABASE__PORT"
+value = "10\n"
+accept = false
+why = "a regex anchored with $ would have let this through in Python; fullmatch does not"
+
+[[case]]
+name = "lex-int-unit-separator"
+var = "T_PLAT__DATABASE__PORT"
+value = "\u001F10"
+accept = false
+why = "Python's str.strip removes U+001F, Rust's str::trim does not — exactly where the two stripping rules part"
+
+[[case]]
+name = "lex-int-non-breaking-space"
+var = "T_PLAT__DATABASE__PORT"
+value = "\u00A010"
+accept = false
+why = "Rust's str::trim removes U+00A0, Python's str.strip also does; the grammar removes the question"
+
+[[case]]
+name = "lex-int-explicit-plus"
+var = "T_PLAT__DATABASE__PORT"
+value = "+10"
+accept = true
+expect_int = 10
+why = "a single leading sign is part of the grammar in both languages"
+
+[[case]]
+name = "lex-int-leading-zeroes"
+var = "T_PLAT__DATABASE__PORT"
+value = "010"
+accept = true
+expect_int = 10
+why = "decimal with leading zeroes, not octal — Rust reads 10, so Python must too"
+
+[[case]]
+name = "lex-int-hex-prefix"
+var = "T_PLAT__DATABASE__PORT"
+value = "0x10"
+accept = false
+why = "no radix prefixes in either language"
+
+[[case]]
+name = "lex-int-negative"
+var = "T_PLAT__DATABASE__PORT"
+value = "-1"
+accept = false
+why = "lexically valid, then rejected by the port range"
+
+[[case]]
+name = "lex-int-arabic-indic-digits"
+var = "T_PLAT__DATABASE__PORT"
+value = "\u0661\u0660"
+accept = false
+why = "Python's int() reads these as 10; Rust rejects non-ASCII digits"
+
+[[case]]
+name = "lex-int-fullwidth-digits"
+var = "T_PLAT__DATABASE__PORT"
+value = "\uFF11\uFF10"
+accept = false
+why = "Python's int() reads these as 10; Rust rejects non-ASCII digits"
+
+[[case]]
+name = "lex-int-empty"
+var = "T_PLAT__DATABASE__PORT"
+value = ""
+accept = false
+why = "no digits"
+
+[[case]]
+name = "lex-int-lone-plus"
+var = "T_PLAT__DATABASE__PORT"
+value = "+"
+accept = false
+why = "sign with no digits"
+
+[[case]]
+name = "lex-int-lone-minus"
+var = "T_PLAT__DATABASE__PORT"
+value = "-"
+accept = false
+why = "sign with no digits"
+
+[[case]]
+name = "lex-int-double-sign"
+var = "T_PLAT__DATABASE__PORT"
+value = "++1"
+accept = false
+why = "at most one leading sign"
+
+[[case]]
+name = "lex-int-internal-space"
+var = "T_PLAT__DATABASE__PORT"
+value = "1 0"
+accept = false
+why = "digits must be contiguous"
+
+[[case]]
+name = "lex-int-thousands-separator"
+var = "T_PLAT__DATABASE__PORT"
+value = "1,0"
+accept = false
+why = "no grouping separators"
+
+[[case]]
+name = "lex-int-decimal-form"
+var = "T_PLAT__DATABASE__PORT"
+value = "10.0"
+accept = false
+why = "an integer field does not accept a decimal spelling"
+
+[[case]]
+name = "lex-int-exponent-form"
+var = "T_PLAT__DATABASE__PORT"
+value = "1e1"
+accept = false
+why = "an integer field does not accept exponent notation"
+
+# --- integer grammar, on market_data.timeout_ms -----------------------------
+#
+# The same grammar applies to every integer-typed key, not just the port.
+
+[[case]]
+name = "lex-timeout-underscore-separator"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "1_0"
+accept = false
+why = "same grammar as every other integer field"
+
+[[case]]
+name = "lex-timeout-leading-space"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = " 5000"
+accept = false
+why = "no trimming, on every integer field"
+
+[[case]]
+name = "lex-timeout-arabic-indic-digits"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "\u0661\u0660"
+accept = false
+why = "no non-ASCII digits, on every integer field"
+
+[[case]]
+name = "lex-timeout-hex-prefix"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "0x10"
+accept = false
+why = "no radix prefixes, on every integer field"
+
+[[case]]
+name = "lex-timeout-explicit-plus"
+var = "T_PLAT__MARKET_DATA__TIMEOUT_MS"
+value = "+2500"
+accept = true
+expect_int = 2500
+why = "a single leading sign is accepted on every integer field"
+
+# --- integer grammar, on market_data.max_retries ----------------------------
+
+[[case]]
+name = "lex-retries-underscore-separator"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "1_0"
+accept = false
+why = "same grammar as every other integer field"
+
+[[case]]
+name = "lex-retries-trailing-space"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "5 "
+accept = false
+why = "no trimming, on every integer field"
+
+[[case]]
+name = "lex-retries-fullwidth-digits"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "\uFF15"
+accept = false
+why = "no non-ASCII digits, on every integer field"
+
+[[case]]
+name = "lex-retries-unit-separator"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "\u001F5"
+accept = false
+why = "the str.strip / str::trim divergence, on every integer field"
+
+[[case]]
+name = "lex-retries-leading-zeroes"
+var = "T_PLAT__MARKET_DATA__MAX_RETRIES"
+value = "007"
+accept = true
+expect_int = 7
+why = "decimal with leading zeroes, on every integer field"
+
+# --- float grammar, on telemetry.sample_rate --------------------------------
+
+[[case]]
+name = "lex-float-underscore-before-point"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "0_.5"
+accept = false
+why = "rejected by both, but only by accident before the grammar was pinned"
+
+[[case]]
+name = "lex-float-underscore-in-fraction"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "0.5_0"
+accept = false
+why = "Python's float() reads this as 0.5; Rust rejects it. The float-side divergence."
+
+[[case]]
+name = "lex-float-leading-space"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = " 0.5"
+accept = false
+why = "neither language trims overrides"
+
+[[case]]
+name = "lex-float-trailing-space"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "0.5 "
+accept = false
+why = "neither language trims overrides"
+
+[[case]]
+name = "lex-float-surrounding-space"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = " 0.5 "
+accept = false
+why = "neither language trims overrides"
+
+[[case]]
+name = "lex-float-unit-separator"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "\u001F0.5"
+accept = false
+why = "Python's str.strip removes U+001F, Rust's str::trim does not"
+
+[[case]]
+name = "lex-float-arabic-indic-digits"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "\u0660.\u0665"
+accept = false
+why = "Python's float() reads these as 0.5; Rust rejects non-ASCII digits"
+
+[[case]]
+name = "lex-float-exponent-out-of-range"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "1e3"
+accept = false
+why = "lexically valid exponent notation in both, then rejected as outside 0.0..=1.0"
+
+[[case]]
+name = "lex-float-exponent-in-range"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "5e-1"
+accept = true
+expect_float = 0.5
+why = "exponent notation is accepted identically by both grammars"
+
+[[case]]
+name = "lex-float-leading-point"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = ".5"
+accept = true
+expect_float = 0.5
+why = "Rust's f64 grammar allows a bare fractional part, so Python must too"
+
+[[case]]
+name = "lex-float-trailing-point"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "0."
+accept = true
+expect_float = 0.0
+why = "Rust's f64 grammar allows a trailing point, so Python must too"
+
+[[case]]
+name = "lex-float-explicit-plus"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "+0.5"
+accept = true
+expect_float = 0.5
+why = "a single leading sign is part of the grammar in both languages"
+
+[[case]]
+name = "lex-float-lone-point"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "."
+accept = false
+why = "at least one digit is required on some side of the point"
+
+[[case]]
+name = "lex-float-empty"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = ""
+accept = false
+why = "no digits"
+
+[[case]]
+name = "lex-float-lone-plus"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "+"
+accept = false
+why = "sign with no digits"
+
+[[case]]
+name = "lex-float-hex"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "0x1p3"
+accept = false
+why = "no hexadecimal float literals in either language"
+
+[[case]]
+name = "lex-float-exponent-missing-digits"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "1e"
+accept = false
+why = "an exponent marker needs digits"
+
+[[case]]
+name = "lex-float-double-point"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "1.2.3"
+accept = false
+why = "one point at most"
+
+[[case]]
+name = "lex-float-infinity-word"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "infinity"
+accept = false
+why = "Rust's f64 parses this spelling, so both grammars accept it — then both reject it as non-finite"
+
+[[case]]
+name = "lex-float-infinity-uppercase"
+var = "T_PLAT__TELEMETRY__SAMPLE_RATE"
+value = "INF"
+accept = false
+why = "non-finite spellings are case-insensitive in both, and rejected by value in both"
+
+# --- boolean grammar, on app.debug ------------------------------------------
+
+[[case]]
+name = "lex-bool-true"
+var = "T_PLAT__APP__DEBUG"
+value = "true"
+accept = true
+expect_bool = true
+why = "the canonical spelling"
+
+[[case]]
+name = "lex-bool-uppercase"
+var = "T_PLAT__APP__DEBUG"
+value = "TRUE"
+accept = true
+expect_bool = true
+why = "ASCII case-insensitive in both"
+
+[[case]]
+name = "lex-bool-one"
+var = "T_PLAT__APP__DEBUG"
+value = "1"
+accept = true
+expect_bool = true
+why = "numeric spelling accepted by both"
+
+[[case]]
+name = "lex-bool-off"
+var = "T_PLAT__APP__DEBUG"
+value = "off"
+accept = true
+expect_bool = false
+why = "falsy spelling accepted by both"
+
+[[case]]
+name = "lex-bool-leading-space"
+var = "T_PLAT__APP__DEBUG"
+value = " true"
+accept = false
+why = "booleans are not trimmed either"
+
+[[case]]
+name = "lex-bool-trailing-space"
+var = "T_PLAT__APP__DEBUG"
+value = "true "
+accept = false
+why = "booleans are not trimmed either"
+
+[[case]]
+name = "lex-bool-unit-separator"
+var = "T_PLAT__APP__DEBUG"
+value = "\u001Ftrue"
+accept = false
+why = "the str.strip / str::trim divergence, on the boolean path"
+
+[[case]]
+name = "lex-bool-empty"
+var = "T_PLAT__APP__DEBUG"
+value = ""
+accept = false
+why = "not a boolean spelling"
+
+# --- string passthrough, on app.log_level -----------------------------------
+#
+# Strings are the one type with no coercion. These cases pin that they are
+# taken verbatim in both languages rather than trimmed.
+
+[[case]]
+name = "lex-string-verbatim"
+var = "T_PLAT__APP__LOG_LEVEL"
+value = "trace"
+accept = true
+expect_string = "trace"
+why = "an ordinary string override"
+
+[[case]]
+name = "lex-string-leading-space-not-trimmed"
+var = "T_PLAT__APP__LOG_LEVEL"
+value = " info"
+accept = false
+why = "strings are not trimmed, so this is not the log level `info` in either language"

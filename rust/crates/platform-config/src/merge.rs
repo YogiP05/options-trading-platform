@@ -83,6 +83,7 @@ pub(crate) fn apply_env_overrides(
             key: key.clone(),
             expected: type_name(slot),
             value: raw.clone(),
+            hint: whitespace_hint(slot, raw),
         })?;
 
         applied.push(key);
@@ -102,22 +103,129 @@ fn resolve_slot<'a>(document: &'a mut Value, segments: &[String]) -> Option<&'a 
     Some(cursor)
 }
 
+// --- Canonical override grammar ----------------------------------------------
+//
+// Environment overrides arrive as raw strings, so *how a string becomes a
+// value* is as much a part of the shared schema as the value ranges are. These
+// grammars are spelled out here and mirrored character for character in
+// `py/src/t_plat/config/merge.py`, deliberately **not** delegated to each
+// language's standard library: `str::parse` and Python's `int()`/`float()`
+// disagree in ways that would silently split the two implementations —
+// Python's builtins accept `1_0`, Arabic-Indic and full-width digits, and
+// their whitespace stripping differs from Rust's (`str::trim` follows Unicode
+// `White_Space`, Python's `str.strip` follows `str.isspace`, and they part
+// company on characters like U+001F).
+//
+// Neither side trims. A value with surrounding whitespace is rejected with an
+// error that says so, which is noisier than silently accepting `" 5432"` but
+// cannot mean two different things in two languages.
+
+/// Whether `raw` matches the canonical integer grammar: an optional single
+/// leading ASCII `+`/`-`, then one or more ASCII digits. No underscores, no
+/// whitespace, no radix prefixes, no non-ASCII digits.
+///
+/// Equivalent to the regex `^[+-]?[0-9]+$`, and to the subset of
+/// `i64::from_str` that Python's `int()` can be made to agree with.
+fn is_canonical_integer(raw: &str) -> bool {
+    let digits = raw.strip_prefix(['+', '-']).unwrap_or(raw);
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// Whether `raw` matches the canonical float grammar: an optional sign, then
+/// either a non-finite spelling (`inf`, `infinity`, `nan`, case-insensitive,
+/// as `f64::from_str` accepts) or a decimal mantissa with at least one ASCII
+/// digit and an optional `e`/`E` exponent.
+///
+/// Equivalent to the regex
+/// `^[+-]?(inf|infinity|nan|([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?)$`
+/// (case-insensitive). Non-finite spellings parse here and are then rejected
+/// by value in [`Config::validate`](crate::Config::validate), identically in
+/// both languages.
+fn is_canonical_float(raw: &str) -> bool {
+    let body = raw.strip_prefix(['+', '-']).unwrap_or(raw);
+    if body.is_empty() {
+        return false;
+    }
+    let lowered = body.to_ascii_lowercase();
+    if matches!(lowered.as_str(), "inf" | "infinity" | "nan") {
+        return true;
+    }
+
+    let (mantissa, exponent) = match lowered.split_once('e') {
+        Some((mantissa, exponent)) => (mantissa, Some(exponent)),
+        None => (lowered.as_str(), None),
+    };
+
+    if let Some(exponent) = exponent {
+        let exponent_digits = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+        if exponent_digits.is_empty() || !exponent_digits.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return false;
+        }
+    }
+
+    let (integral, fractional) = match mantissa.split_once('.') {
+        Some((integral, fractional)) => (integral, fractional),
+        None => (mantissa, ""),
+    };
+    // At least one digit overall, and nothing but ASCII digits on either side.
+    // A second `.` lands in `fractional` and fails the digit check.
+    (!integral.is_empty() || !fractional.is_empty())
+        && integral.bytes().all(|byte| byte.is_ascii_digit())
+        && fractional.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// Parse `raw` as the canonical spelling of a boolean.
+///
+/// ASCII-lowercased rather than [`str::to_lowercase`] so the accepted set
+/// cannot widen through Unicode case folding, and untrimmed like the numeric
+/// grammars.
+fn parse_canonical_bool(raw: &str) -> Option<bool> {
+    match raw.to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 /// Parse `raw` as the same TOML type `existing` already holds.
 ///
 /// Returns `None` when `raw` does not parse as that type.
 fn coerce_like(existing: &Value, raw: &str) -> Option<Value> {
     match existing {
+        // Strings are taken verbatim — no trimming, no interpretation — in
+        // both languages.
         Value::String(_) => Some(Value::String(raw.to_owned())),
-        Value::Integer(_) => raw.trim().parse::<i64>().ok().map(Value::Integer),
-        Value::Float(_) => raw.trim().parse::<f64>().ok().map(Value::Float),
-        Value::Boolean(_) => match raw.trim().to_ascii_lowercase().as_str() {
-            "true" | "1" | "yes" | "on" => Some(Value::Boolean(true)),
-            "false" | "0" | "no" | "off" => Some(Value::Boolean(false)),
-            _ => None,
-        },
+        Value::Integer(_) => {
+            // The grammar check rules out everything `i64::from_str` would
+            // disagree with Python about; `from_str` then rejects overflow.
+            is_canonical_integer(raw)
+                .then(|| raw.parse::<i64>().ok())
+                .flatten()
+                .map(Value::Integer)
+        }
+        Value::Float(_) => is_canonical_float(raw)
+            .then(|| raw.parse::<f64>().ok())
+            .flatten()
+            .map(Value::Float),
+        Value::Boolean(_) => parse_canonical_bool(raw).map(Value::Boolean),
         // Tables and arrays are not overridable one-variable-at-a-time; point
         // the operator at a config file instead of inventing a mini-syntax.
         _ => None,
+    }
+}
+
+/// Guidance for the common near-miss: a value that would have parsed if it
+/// were not padded with whitespace.
+///
+/// Neither language trims overrides, so this turns a confusing rejection into
+/// an obvious one. The Python mirror emits the same sentence.
+fn whitespace_hint(existing: &Value, raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed != raw && coerce_like(existing, trimmed).is_some() {
+        " — surrounding whitespace is not allowed".to_owned()
+    } else {
+        String::new()
     }
 }
 
@@ -216,6 +324,94 @@ mod tests {
         let err = apply_env_overrides(&mut base, &env(&[("T_PLAT__DBB__PORT", "1")]))
             .expect_err("unknown key must fail");
         assert!(format!("{err}").contains("dbb.port"), "got: {err}");
+    }
+
+    #[test]
+    fn the_integer_grammar_is_ascii_digits_with_an_optional_sign() {
+        for accepted in ["0", "10", "+10", "-10", "010", "9223372036854775807"] {
+            assert!(
+                super::is_canonical_integer(accepted),
+                "should accept {accepted:?}"
+            );
+        }
+        for rejected in [
+            "1_0", // Python's int() accepts this; Rust's parse does not
+            " 10", // no trimming, in either language
+            "10 ",
+            "10\n",
+            "\u{1f}10", // Python's str.strip removes this; Rust's trim does not
+            "\u{a0}10", // Rust's trim removes this; the grammar does not
+            "0x10",
+            "1 0",
+            "1,0",
+            "10.0",
+            "1e1",
+            "\u{661}\u{660}",   // Arabic-Indic digits
+            "\u{ff11}\u{ff10}", // full-width digits
+            "",
+            "+",
+            "-",
+            "++1",
+        ] {
+            assert!(
+                !super::is_canonical_integer(rejected),
+                "should reject {rejected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_float_grammar_matches_rusts_spellings_without_the_lenient_extras() {
+        for accepted in [
+            "0", "0.5", "+0.5", "-0.5", ".5", "0.", "1e3", "1E3", "1e+3", "1e-3", "5e-1", "inf",
+            "INF", "infinity", "nan", "-inf",
+        ] {
+            assert!(
+                super::is_canonical_float(accepted),
+                "should accept {accepted:?}"
+            );
+        }
+        for rejected in [
+            "0_.5",
+            "0.5_0", // Python's float() accepts this; Rust's parse does not
+            " 0.5",
+            "0.5 ",
+            "\u{1f}0.5",
+            ".",
+            "",
+            "+",
+            "1e",
+            "e3",
+            "0x1p3",
+            "1.2.3",
+            "1e2e3",
+            "\u{660}.\u{665}", // Arabic-Indic digits
+        ] {
+            assert!(
+                !super::is_canonical_float(rejected),
+                "should reject {rejected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_boolean_grammar_is_untrimmed_and_ascii_cased() {
+        assert_eq!(super::parse_canonical_bool("TRUE"), Some(true));
+        assert_eq!(super::parse_canonical_bool("off"), Some(false));
+        assert_eq!(super::parse_canonical_bool(" true"), None, "no trimming");
+        assert_eq!(super::parse_canonical_bool("true "), None, "no trimming");
+        assert_eq!(super::parse_canonical_bool(""), None);
+    }
+
+    #[test]
+    fn a_whitespace_near_miss_says_so() {
+        let mut base = doc("[db]\nport = 5432\n");
+        let err = apply_env_overrides(&mut base, &env(&[("T_PLAT__DB__PORT", " 6543 ")]))
+            .expect_err("untrimmed value must fail");
+        assert!(
+            format!("{err}").contains("surrounding whitespace"),
+            "got: {err}"
+        );
     }
 
     #[test]

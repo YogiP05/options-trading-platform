@@ -1,7 +1,8 @@
-"""Numeric-bounds parity: the Python half.
+"""Cross-language parity: the Python half.
 
-Every case in ``config/testdata/numeric_bounds.toml`` is driven through the
-environment-override path here, and through the identical path in
+Every case in ``config/testdata/numeric_bounds.toml`` (value ranges) and
+``config/testdata/lexical_overrides.toml`` (override string grammar) is driven
+through the environment-override path here, and through the identical path in
 ``rust/crates/platform-config/tests/parity_bounds.rs``. Both suites assert the
 same accept/reject outcome per case, so the two implementations of one schema
 cannot disagree about which configs are valid.
@@ -10,7 +11,8 @@ cannot disagree about which configs are valid.
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -33,21 +35,33 @@ from t_plat.config import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = REPO_ROOT / "config" / "testdata" / "numeric_bounds.toml"
+TESTDATA = REPO_ROOT / "config" / "testdata"
+#: The shared parity fixtures, in load order. Both are also read by the Rust
+#: suite, which is what keeps the two implementations honest.
+FIXTURES = (TESTDATA / "numeric_bounds.toml", TESTDATA / "lexical_overrides.toml")
 NO_SUCH_DIR = Path("/nonexistent/config/dir")
 
-#: The numeric fields the fixture must keep covered, and how to read each back.
-FIELD_READERS = {
+#: Every override-coerced key, and how to read each back off a loaded config.
+#: Integer, float, boolean and string all go through the coercion, so all four
+#: need parity coverage — not just the numerics.
+FIELD_READERS: dict[str, Callable[[Config], Any]] = {
     "T_PLAT__DATABASE__PORT": lambda c: c.database.port,
     "T_PLAT__MARKET_DATA__TIMEOUT_MS": lambda c: c.market_data.timeout_ms,
     "T_PLAT__MARKET_DATA__MAX_RETRIES": lambda c: c.market_data.max_retries,
     "T_PLAT__TELEMETRY__SAMPLE_RATE": lambda c: c.telemetry.sample_rate,
+    "T_PLAT__APP__DEBUG": lambda c: c.app.debug,
+    "T_PLAT__APP__LOG_LEVEL": lambda c: c.app.log_level,
 }
+
+#: Spellings Python's int()/float()/str.strip accept and Rust's parse/trim
+#: reject. If a case is ever dropped from the fixture, the class of bug it
+#: guards silently comes back.
+KNOWN_STDLIB_DIVERGENCES = ("1_0", "0.5_0", "\u001f10", "\u0661\u0660", "\uff11\uff10")
 
 
 @dataclass(frozen=True, slots=True)
 class Case:
-    """One boundary case as written in the shared fixture."""
+    """One parity case as written in a shared fixture."""
 
     name: str
     var: str
@@ -56,15 +70,21 @@ class Case:
     why: str
     expect_int: int | None = None
     expect_float: float | None = None
+    expect_bool: bool | None = None
+    expect_string: str | None = None
 
 
 def _load_cases() -> list[Case]:
-    document = tomllib.loads(FIXTURE.read_text(encoding="utf-8"))
+    known = {field.name for field in fields(Case)}
     cases: list[Case] = []
-    for raw in document["case"]:
-        unknown = set(raw) - {f.name for f in Case.__dataclass_fields__.values()}
-        assert not unknown, f"fixture case `{raw.get('name')}` has unknown keys: {sorted(unknown)}"
-        cases.append(Case(**raw))
+    for fixture in FIXTURES:
+        document = tomllib.loads(fixture.read_text(encoding="utf-8"))
+        for raw in document["case"]:
+            unknown = set(raw) - known
+            assert not unknown, (
+                f"{fixture.name}: case `{raw.get('name')}` has unknown keys: {sorted(unknown)}"
+            )
+            cases.append(Case(**raw))
     return cases
 
 
@@ -95,17 +115,30 @@ def test_fixture_case_matches_the_declared_outcome(case: Case) -> None:
         return
 
     config = _load_with_override(case)
-    observed: Any = FIELD_READERS[case.var](config)
+    observed = FIELD_READERS[case.var](config)
+    context = f"`{case.name}`: {case.why}"
+
     if case.expect_int is not None:
-        assert observed == case.expect_int, f"`{case.name}`: {case.why}"
+        assert observed == case.expect_int, context
     if case.expect_float is not None:
-        assert observed == pytest.approx(case.expect_float), f"`{case.name}`: {case.why}"
+        assert observed == pytest.approx(case.expect_float), context
+    if case.expect_bool is not None:
+        assert observed is case.expect_bool, context
+    if case.expect_string is not None:
+        assert observed == case.expect_string, context
 
 
-def test_the_fixture_covers_every_numeric_field() -> None:
+def test_the_fixtures_cover_every_overridable_type() -> None:
     for var in FIELD_READERS:
         covered = [case for case in CASES if case.var == var]
-        assert len(covered) >= 4, f"`{var}` needs boundary coverage, found {len(covered)} cases"
+        assert len(covered) >= 2, f"`{var}` needs parity coverage, found {len(covered)} cases"
+
+
+def test_the_lexical_fixture_pins_the_known_stdlib_divergences() -> None:
+    for value in KNOWN_STDLIB_DIVERGENCES:
+        assert any(case.value == value and not case.accept for case in CASES), (
+            f"the fixture must keep a rejecting case for {value!r}"
+        )
 
 
 def test_case_names_are_unique() -> None:
@@ -127,16 +160,14 @@ def test_the_declared_constants_are_the_ones_rust_declares() -> None:
     assert MAX_TELEMETRY_SAMPLE_RATE == 1.0
 
 
-def test_the_fixture_is_shared_with_the_rust_suite() -> None:
-    """The Rust suite must read this same file, not a Python-only copy."""
-    rust_test = (
-        REPO_ROOT / "rust" / "crates" / "platform-config" / "tests" / "parity_bounds.rs"
-    ).read_text(encoding="utf-8")
-    support = (
-        REPO_ROOT / "rust" / "crates" / "platform-config" / "tests" / "support" / "mod.rs"
-    ).read_text(encoding="utf-8")
+def test_the_fixtures_are_shared_with_the_rust_suite() -> None:
+    """The Rust suite must read these same files, not Python-only copies."""
+    crate = REPO_ROOT / "rust" / "crates" / "platform-config" / "tests"
+    rust_test = (crate / "parity_bounds.rs").read_text(encoding="utf-8")
+    support = (crate / "support" / "mod.rs").read_text(encoding="utf-8")
 
-    assert "bounds_fixture_path" in rust_test, "the Rust parity suite must load the fixture"
-    assert "testdata/numeric_bounds.toml" in support, (
-        "the Rust suite must point at config/testdata/numeric_bounds.toml"
-    )
+    assert "parity_fixture_paths" in rust_test, "the Rust parity suite must load the fixtures"
+    for fixture in FIXTURES:
+        assert f"testdata/{fixture.name}" in support or fixture.name in support, (
+            f"the Rust suite must point at config/testdata/{fixture.name}"
+        )

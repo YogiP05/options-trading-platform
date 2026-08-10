@@ -19,7 +19,8 @@ structs. Substrate only — no trading, pricing or strategy settings live here.
 | `prod.toml`           | yes | `prod` profile overlay (deployed). Non-secret; secrets by reference only. |
 | `config.example.toml` | yes | **Sample config** — every key with its type. Loaded by the Rust and Python test suites so it cannot drift. |
 | `../.env.example`     | yes | **Sample environment** — control vars + the secret env var names. Dummy values only. |
-| `testdata/numeric_bounds.toml` | yes | **Shared test fixture** (not config) — boundary cases both language suites run to prove their numeric bounds agree. |
+| `testdata/numeric_bounds.toml` | yes | **Shared test fixture** (not config) — value-range boundary cases both language suites run to prove their numeric bounds agree. |
+| `testdata/lexical_overrides.toml` | yes | **Shared test fixture** (not config) — override string-grammar cases both suites run to prove they parse raw strings identically. |
 | `*.override.toml`     | **no** (git-ignored) | Your personal overrides. `cp config.example.toml local.override.toml`. |
 | `../.env`             | **no** (git-ignored) | Your local secrets. `cp ../.env.example ../.env`. |
 
@@ -70,6 +71,29 @@ Overrides are **typed and checked**, not stringly-typed:
 
 Unknown keys inside the TOML files are rejected the same way.
 
+#### Override grammar (identical in both languages)
+
+Overrides arrive as raw strings, so *how a string becomes a value* is part of
+the shared schema too. Both loaders implement one explicit ASCII grammar rather
+than delegating to `str::parse` / `int()` / `float()`, which disagree:
+
+| Declared type | Accepted spelling |
+|---------------|-------------------|
+| integer | `[+-]?[0-9]+`, then the field's range. `+10` and `010` are 10. |
+| float   | `[+-]?( inf \| infinity \| nan \| ([0-9]+(.[0-9]*)?\|.[0-9]+)([eE][+-]?[0-9]+)? )`, case-insensitive. `.5`, `0.`, `5e-1` are valid; non-finite spellings parse and are then rejected by value. |
+| boolean | exact ASCII-lowercased `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`. |
+| string  | taken verbatim. |
+
+**Neither language trims.** `T_PLAT__DATABASE__PORT=" 5432"` is an error, not
+`5432`, and the message says so. That is stricter than either standard library,
+deliberately: Python's `int()` accepts `1_0`, Arabic-Indic and full-width
+digits, and Python's `str.strip` and Rust's `str::trim` follow different
+definitions of whitespace (they part company on characters like U+001F). Any of
+those would mean one config file loading in Python and failing in Rust.
+
+`config/testdata/lexical_overrides.toml` is the shared fixture pinning this
+grammar — see below.
+
 ## Numeric bounds (identical in both languages)
 
 Every numeric field has a **canonical range that both implementations enforce**.
@@ -94,11 +118,14 @@ error. What is guaranteed identical is **whether the config loads at all**.
 The bounds live as named constants in
 [`rust/.../model.rs`](../rust/crates/platform-config/src/model.rs) and
 [`py/.../model.py`](../py/src/t_plat/config/model.py), and
-[`config/testdata/numeric_bounds.toml`](./testdata/numeric_bounds.toml) is a
-**shared fixture** that both test suites load, driving each boundary case
-(min, max, max+1, negative, overflow) through both implementations and asserting
-the same accept/reject outcome. Moving a bound on one side only fails the other
-side's suite.
+[`config/testdata/numeric_bounds.toml`](./testdata/numeric_bounds.toml) and
+[`config/testdata/lexical_overrides.toml`](./testdata/lexical_overrides.toml)
+are **shared fixtures** that both test suites load — the first driving each
+value boundary (min, max, max+1, negative, overflow), the second each lexical
+form (`1_0`, padded whitespace, unicode digits, `0x10`, `.5`, `inf`, …) —
+through both implementations and asserting the same accept/reject outcome.
+Moving a bound or loosening a grammar on one side only fails the other side's
+suite.
 
 ## Secrets — never committed, never literal
 
@@ -174,7 +201,10 @@ environment.
 2. Add it to `config/default.toml` **and** `config/config.example.toml`.
 3. If it is numeric, declare its bounds as `MIN_*`/`MAX_*` constants in
    **both** `model.rs` and `model.py`, and add boundary cases (min, max,
-   max+1, negative) to `config/testdata/numeric_bounds.toml`.
+   max+1, negative) to `config/testdata/numeric_bounds.toml`. If it is
+   overridable at all, add lexical cases to
+   `config/testdata/lexical_overrides.toml` and a reader for it to both parity
+   suites.
 4. If it is a secret, register it in `secret_refs()` (Rust) / `secret_refs()`
    (Python) so the `prod` fail-fast check covers it, and add an **assignment**
    (not just a comment) for the env var name in `.env.example` — the drift

@@ -21,6 +21,6 @@ toml = "1"
 
 [dev-dependencies]
 # Integration tests parse the committed config files and the shared
-# numeric-bounds fixture directly, to assert both stay in step with the schema.
+# parity fixtures directly, to assert both stay in step with the schema.
 serde = { version = "1", features = ["derive"] }
 toml = "1"

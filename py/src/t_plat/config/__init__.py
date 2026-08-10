@@ -19,7 +19,9 @@ layer states only what it changes.
 3. **Profile file** — ``<config_dir>/<profile>.toml`` (optional).
 4. **Explicit file** — :data:`ENV_CONFIG_FILE` (optional, must exist if set).
 5. **Environment** — ``T_PLAT__<SECTION>__<KEY>``, parsed as the type the
-   schema declares for that key.
+   schema declares for that key, under one explicit ASCII grammar
+   (``[+-]?[0-9]+`` for integers, and so on) that neither language trims.
+   See :mod:`t_plat.config.merge` and the grammar table in ``config/README.md``.
 
 Control variables (:data:`ENV_PROFILE`, :data:`ENV_CONFIG_DIR`,
 :data:`ENV_CONFIG_FILE`) use a single underscore and choose *what* to load;
@@ -32,11 +34,15 @@ One schema, two implementations
 
 ``rust/crates/platform-config`` mirrors this package key for key. To keep the
 two from diverging, every numeric field's canonical range is declared here as
-``MIN_*``/``MAX_*`` constants and mirrored in ``model.rs``, and
-``config/testdata/numeric_bounds.toml`` is a shared fixture whose boundary
-cases both test suites run — asserting the same accept/reject outcome. Python
-integers are unbounded, so these ranges are checked explicitly where Rust gets
-them from ``u16``/``u32``/``u64``. See the bounds table in ``config/README.md``.
+``MIN_*``/``MAX_*`` constants and mirrored in ``model.rs``, the override
+string grammar is spelled out in :mod:`t_plat.config.merge` rather than
+delegated to ``int()``/``float()`` (whose leniency differs from Rust's
+``str::parse``), and ``config/testdata/{numeric_bounds,lexical_overrides}.toml``
+are shared fixtures whose cases both test suites run — asserting the same
+accept/reject outcome. Python integers are unbounded and its builtins are more
+permissive, so both the ranges and the grammar are enforced explicitly where
+Rust gets them from ``u16``/``u32``/``u64`` and ``str::parse``. See the tables
+in ``config/README.md``.
 
 Secrets are never in the repo
 -----------------------------

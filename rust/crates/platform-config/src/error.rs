@@ -59,7 +59,7 @@ pub enum ConfigError {
 
     /// An environment override could not be parsed as the type the schema
     /// declares for that key.
-    #[error("environment variable `{var}` is not a valid {expected} for config key `{key}` (got `{value}`)")]
+    #[error("environment variable `{var}` is not a valid {expected} for config key `{key}` (got `{value}`){hint}")]
     InvalidEnvValue {
         /// The environment variable that was set.
         var: String,
@@ -69,6 +69,10 @@ pub enum ConfigError {
         expected: &'static str,
         /// The value we failed to parse.
         value: String,
+        /// Guidance appended to the message, or empty. Overrides are not
+        /// trimmed (see `merge.rs`), so the common near-miss of a stray space
+        /// is called out rather than left as a bare "not a valid integer".
+        hint: String,
     },
 
     /// The merged document does not match the schema (unknown key, wrong

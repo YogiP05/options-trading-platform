@@ -32,9 +32,14 @@ pub fn example_config_path() -> PathBuf {
     repo_config_dir().join("config.example.toml")
 }
 
-/// The shared numeric-bounds fixture, also read by the Python suite.
-pub fn bounds_fixture_path() -> PathBuf {
-    repo_config_dir().join("testdata/numeric_bounds.toml")
+/// The shared parity fixtures, in load order. Both are also read by the
+/// Python suite, which is what keeps the two implementations honest.
+pub fn parity_fixture_paths() -> Vec<PathBuf> {
+    let testdata = repo_config_dir().join("testdata");
+    vec![
+        testdata.join("numeric_bounds.toml"),
+        testdata.join("lexical_overrides.toml"),
+    ]
 }
 
 /// The assignment keys in a dotenv-style file: the `KEY` of every `KEY=value`

@@ -13,7 +13,9 @@
 //! 3. **Profile file** — `<config_dir>/<profile>.toml` (optional).
 //! 4. **Explicit file** — [`ENV_CONFIG_FILE`] (optional, but must exist if set).
 //! 5. **Environment** — `T_PLAT__<SECTION>__<KEY>`, parsed as the type the
-//!    schema declares for that key.
+//!    schema declares for that key, under one explicit ASCII grammar
+//!    (`[+-]?[0-9]+` for integers, and so on) that neither language trims.
+//!    See `merge.rs` and the grammar table in `config/README.md`.
 //!
 //! Control variables ([`ENV_PROFILE`], [`ENV_CONFIG_DIR`], [`ENV_CONFIG_FILE`])
 //! use a single underscore and choose *what* to load; value overrides use the
@@ -24,10 +26,12 @@
 //!
 //! `py/src/t_plat/config` mirrors this crate key for key. To keep the two from
 //! diverging, every numeric field's canonical range is declared here as
-//! `MIN_*`/`MAX_*` constants and mirrored in `model.py`, and
-//! `config/testdata/numeric_bounds.toml` is a shared fixture whose boundary
-//! cases both test suites run — asserting the same accept/reject outcome. See
-//! the bounds table in `config/README.md`.
+//! `MIN_*`/`MAX_*` constants and mirrored in `model.py`, the override string
+//! grammar is spelled out in `merge.rs` rather than delegated to `str::parse`
+//! (whose leniency differs from Python's `int()`/`float()`), and
+//! `config/testdata/{numeric_bounds,lexical_overrides}.toml` are shared
+//! fixtures whose cases both test suites run — asserting the same
+//! accept/reject outcome. See the tables in `config/README.md`.
 //!
 //! # Secrets are never in the repo
 //!
