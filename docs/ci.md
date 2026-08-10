@@ -80,7 +80,7 @@ CI installs exactly the versions the devcontainer uses
 | Tool | Version | Pinned where | How CI gets it |
 |------|---------|--------------|----------------|
 | Rust | 1.97.1 (+ clippy, rustfmt) | `rust-toolchain.toml` | `rustup show active-toolchain \|\| rustup toolchain install` — reads the file, so the version is **not** duplicated in the workflow |
-| uv | 0.11.24 | `.devcontainer/Dockerfile`, workflow | `astral-sh/setup-uv` |
+| uv | 0.11.24 | `.devcontainer/Dockerfile`, workflow | `astral-sh/setup-uv` (pinned to `v9.0.0` — the action publishes no floating major tag) |
 | just | 1.58.0 | `.devcontainer/Dockerfile`, workflow | `taiki-e/install-action` |
 | Python | 3.12 | `py/.python-version` | provisioned by `uv sync`, so the version is **not** duplicated in the workflow |
 
