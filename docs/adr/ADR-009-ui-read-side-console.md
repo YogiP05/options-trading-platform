@@ -21,7 +21,7 @@ with a hard latency-tier rule:
 > state only. **No Python or remote DB in this path.** (§4, §8.5)
 
 A naive UI ("read positions straight from the trading engine", "let the operator
-click to hedge") would put a network hop, a database, or a human-latency control
+click to hedge") would put a network hop, a database, or a user-driven control action
 directly into the loop that must stay fast and local — violating P3/§8.5 and
 endangering the cleanest P&L stream.
 
@@ -90,7 +90,7 @@ Concretely:
 ## Alternatives considered
 
 - **Embed a UI/state read directly in the trading engine.** Rejected — puts a
-  DB/network/human-latency dependency in the execution-critical path (P3/§8.5).
+  DB/network/user-facing dependency in the execution-critical path (P3/§8.5).
 - **Skip a UI, use logs + notebooks only.** Viable for the earliest phases, but
   shadow-mode telemetry (§2) and the Phase 4 activation gate (`J`) are far more
   legible with dashboards; Grafana-first captures most of that value cheaply.

@@ -15,7 +15,7 @@ in **ADR-009**; this doc elaborates it.
 
 ## 1. Purpose & non-goals
 
-**Purpose.** Give humans a way to (a) **monitor** the live system safely,
+**Purpose.** Give users a way to (a) **monitor** the live system safely,
 (b) **research** vol surfaces, dealer positioning, and backtests, and (c) watch
 **shadow-mode telemetry** so the dealer signal can be judged before it ever
 touches live hedging (`options-platform-plan.md` §2).
