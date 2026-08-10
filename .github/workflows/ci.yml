@@ -84,8 +84,8 @@ jobs:
 
       - name: Show resolved toolchain versions
         run: |
-          uv python install
-          echo "PYO3_PYTHON=$(uv python find)" >> "$GITHUB_ENV"
+          uv python install "$(cat py/.python-version)"
+          echo "PYO3_PYTHON=$(uv python find "$(cat py/.python-version)")" >> "$GITHUB_ENV"
           just --version
           uv --version
           rustup show active-toolchain
