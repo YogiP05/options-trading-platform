@@ -21,5 +21,6 @@ fn deterministic_vector_matches_approved_golden() {
         .join("fixtures")
         .join("deterministic_vector.golden");
 
-    assert_vector(fixture, &deterministic_numerical_output(), TOLERANCE).unwrap();
+    assert_vector(fixture, &deterministic_numerical_output(), TOLERANCE)
+        .unwrap_or_else(|error| panic!("{error}"));
 }
