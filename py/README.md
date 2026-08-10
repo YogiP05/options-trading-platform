@@ -21,6 +21,8 @@ We use [uv](https://docs.astral.sh/uv/) rather than Poetry:
 ## Layout
 
 - `pyproject.toml` — PEP 621 metadata, dev dependency group, ruff + mypy config.
+- `.python-version` — pins the interpreter (3.12) uv provisions; satisfies
+  `requires-python` (>=3.11) and matches the devcontainer.
 - `uv.lock` — committed lockfile (the reproducible resolution).
 - `src/t_plat/` — the placeholder package (src-layout).
 - `tests/` — pytest smoke tests.
