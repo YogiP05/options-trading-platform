@@ -46,20 +46,29 @@ Two layers:
    recipe on the first failing line, so a failure inside a multi-command recipe
    (e.g. clippy inside `lint-rust`) cannot be swallowed. There is no
    `continue-on-error` anywhere in the workflow.
-2. **The check is required.** In GitHub, a failing check only *blocks merge*
-   when it is a required status check. Configure this once on the repository:
+2. **The check is required.** In GitHub, a failing check only *hard-blocks the
+   merge button* when it is a required status check. Configure it once:
 
    *Settings → Branches → Branch protection rule for `main` → **Require status
    checks to pass before merging** → add **`gates`***
    (equivalently `gh api -X PATCH repos/:owner/:repo/branches/main/protection ...`).
-
    Also enable *Require branches to be up to date before merging* so a PR is
    re-tested against the current `main`.
 
    With that rule in place the merge button is disabled while `gates` is red or
-   pending. Until an admin adds the rule, CI still runs and reports failure on
-   every PR — it is advisory rather than enforcing, which is a repo setting, not
-   a pipeline gap.
+   pending.
+
+   > **Repo status as of S0-T3:** this cannot be enabled yet. The repository is
+   > **private on a free personal plan**, where GitHub gates both branch
+   > protection and rulesets — the API returns
+   > `403 Upgrade to GitHub Pro or make this repository public to enable this
+   > feature` for `/branches/main/protection` *and* `/rulesets`. Enforcement
+   > therefore needs one of: making the repo public, upgrading to Pro/Team, or
+   > moving it under an organization. Until then `gates` still runs on every PR
+   > and reports a red ❌ that reviewers can see and act on — the gate is
+   > advisory rather than mechanically enforced. That is a repository plan
+   > constraint, not a pipeline gap: the workflow already fails correctly, and
+   > it needs no change when protection is switched on.
 
 The job name is stable (`gates`) precisely so the branch-protection rule does
 not need updating when steps are added.
