@@ -32,4 +32,8 @@ just bench   # cargo bench --workspace (no bench targets yet → clean exit)
 
 Or directly: `cd rust && cargo test --workspace`.
 
+PyO3 needs a Python interpreter at build time. The project pins Python 3.12;
+set `PYO3_PYTHON` to that executable when Cargo cannot discover it. The
+devcontainer uses the uv-installed Python 3.12 interpreter.
+
 The toolchain is pinned by `../rust-toolchain.toml` (Rust 1.97.1).

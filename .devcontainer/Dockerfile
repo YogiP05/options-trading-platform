@@ -23,6 +23,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.24 /uv /uvx /usr/local/bin/
 # never has to pick/download a different compatible version at runtime.
 ENV UV_PYTHON=${PYTHON_VERSION}
 RUN uv python install ${PYTHON_VERSION}
+RUN ln -sf "$(uv python find ${PYTHON_VERSION})" /usr/local/bin/python3
+ENV PYO3_PYTHON=/usr/local/bin/python3
 
 # Pinned `just` task runner.
 RUN cargo install just --version ${JUST_VERSION} --locked

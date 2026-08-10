@@ -15,6 +15,7 @@ dependencies = []
 [dependency-groups]
 # Dev toolchain used by the `just` lint/test targets. Pinned via uv.lock.
 dev = [
+    "maturin>=1.9,<2",
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.11",

@@ -1,0 +1,24 @@
+[package]
+name = "platform-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "platform_py"
+crate-type = ["cdylib"]
+
+[features]
+default = []
+# Do not use `cargo test --all-features`: extension modules do not link libpython on Linux.
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+pyo3 = "0.29"
+
+[build-dependencies]
+pyo3-build-config = "0.29"
+
+[lints]
+workspace = true
