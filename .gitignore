@@ -1,0 +1,13 @@
+.worktrees/
+.polly/
+
+# Rust
+/target
+**/target
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
