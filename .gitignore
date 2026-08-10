@@ -14,3 +14,8 @@ __pycache__/
 .pytest_cache/
 dist/
 *.egg-info/
+
+# Local secrets & config overrides (S0-T5) — see config/README.md.
+# The committed samples are `.env.example` and `config/config.example.toml`.
+.env
+config/*.override.toml
