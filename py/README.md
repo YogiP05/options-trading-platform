@@ -44,7 +44,7 @@ Or directly, build the native extension before pytest:
 ```bash
 cd py
 uv sync
-uv run --group dev maturin develop --manifest-path ../rust/crates/platform-py/Cargo.toml
+uv run --group dev maturin develop -F extension-module --manifest-path ../rust/crates/platform-py/Cargo.toml
 uv run --group dev pytest -q
 ```
 

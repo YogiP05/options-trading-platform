@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 
 [features]
 default = []
+# Do not use `cargo test --all-features`: extension modules do not link libpython on Linux.
 extension-module = ["pyo3/extension-module"]
 
 [dependencies]
