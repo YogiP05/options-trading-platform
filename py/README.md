@@ -25,6 +25,10 @@ We use [uv](https://docs.astral.sh/uv/) rather than Poetry:
   `requires-python` (>=3.11) and matches the devcontainer.
 - `uv.lock` — committed lockfile (the reproducible resolution).
 - `src/t_plat/` — the placeholder package (src-layout).
+- `src/t_plat/config/` — typed configuration loading and secret sourcing
+  (S0-T5), stdlib-only (`tomllib` + dataclasses, no new dependencies). Reads
+  `../config/`; the schema it mirrors is documented in
+  [`../config/README.md`](../config/README.md).
 - `tests/` — pytest smoke tests.
 - `benches/` — placeholder benchmark harness for `just bench`.
 

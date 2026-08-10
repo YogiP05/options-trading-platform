@@ -1,0 +1,26 @@
+# Typed configuration + secret sourcing for the platform (S0-T5).
+#
+# Substrate only: schema, precedence and secret resolution. No trading,
+# pricing or strategy settings live here. Picked up automatically by the
+# workspace's `crates/*` member glob.
+[package]
+name = "platform-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Typed configuration loading and secret sourcing for the options trading platform."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+toml = "1"
+
+[dev-dependencies]
+# Integration tests parse the committed config files and the shared
+# parity fixtures directly, to assert both stay in step with the schema.
+serde = { version = "1", features = ["derive"] }
+toml = "1"

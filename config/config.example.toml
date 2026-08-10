@@ -1,0 +1,65 @@
+# EXAMPLE / SAMPLE CONFIG — every key in the schema, with its type (S0-T5).
+#
+# This file is committed, contains NO secrets, and is loaded verbatim by the
+# Rust and Python config test suites, so it can never drift from the schema.
+#
+# Use it two ways:
+#   1. As documentation of the full schema (below).
+#   2. As a personal override file:
+#          cp config/config.example.toml config/local.override.toml
+#          export T_PLAT_CONFIG_FILE=config/local.override.toml
+#      `config/*.override.toml` is git-ignored, so your edits stay local.
+#
+# Secret fields NEVER hold a literal value. They hold a reference the loader
+# resolves at load time from the environment or a secret store:
+#
+#   "env:NAME"    read from environment variable NAME
+#   "file:/path"  read from a secret-store mount (Docker/K8s secret file)
+#   "none"        no secret configured
+#
+# Anything else — a literal value written into the file — is a load error.
+#
+# Numeric ranges below are enforced identically by the Rust and Python
+# loaders; see the bounds table in config/README.md.
+
+# Application-level settings.
+[app]
+# Service name used in logs and telemetry resource attributes. (string)
+name = "t-plat"
+# One of: "trace" | "debug" | "info" | "warn" | "error". (string)
+log_level = "debug"
+# Verbose diagnostics. MUST be false under the `prod` profile. (bool)
+debug = true
+
+# Postgres connection settings (positions/orders/fills/config/P&L store).
+[database]
+# Hostname or IP. (string)
+host = "127.0.0.1"
+# TCP port. (integer, 1..=65535)
+port = 5432
+# Database name. (string)
+name = "t_plat"
+# Role to connect as. (string)
+user = "t_plat"
+# Secret reference — never a literal password. (secret ref)
+password = "env:T_PLAT_DATABASE_PASSWORD"
+
+# Market-data transport settings. Connectivity only — no trading logic here.
+[market_data]
+# Base URL of the market-data service. (string)
+endpoint = "http://127.0.0.1:8080"
+# Per-request timeout in milliseconds. (integer, 1..=9223372036854775807)
+timeout_ms = 7500
+# Retry attempts after the first failure. (integer, 0..=4294967295)
+max_retries = 2
+# Secret reference — never a literal key. (secret ref)
+api_key = "env:T_PLAT_MARKET_DATA_API_KEY"
+
+# OpenTelemetry export settings.
+[telemetry]
+# Emit traces/metrics at all. (bool)
+enabled = false
+# OTLP gRPC collector endpoint. (string)
+otlp_endpoint = "http://127.0.0.1:4317"
+# Trace sampling ratio. (float, finite, 0.0..=1.0)
+sample_rate = 1.0
